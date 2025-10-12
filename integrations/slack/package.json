@@ -1,0 +1,28 @@
+{
+  "name": "taskflow-slack-integration",
+  "version": "1.0.0",
+  "description": "Slack integration service for TaskFlow",
+  "main": "slack-service.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/slack-service.js",
+    "dev": "ts-node slack-service.ts"
+  },
+  "dependencies": {
+    "@slack/web-api": "^7.0.2",
+    "@slack/webhook": "^7.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1"
+  },
+  "keywords": [
+    "slack",
+    "taskflow",
+    "integration",
+    "notifications"
+  ],
+  "author": "TaskFlow Team",
+  "license": "MIT"
+}

@@ -1,0 +1,38 @@
+{
+  "name": "taskflow",
+  "version": "1.0.0",
+  "description": "Centralized Employee Management System",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "cd frontend && npm start",
+    "dev:backend": "cd backend && npm run dev",
+    "build": "npm run build:frontend && npm run build:backend",
+    "build:frontend": "cd frontend && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "test": "npm run test:frontend && npm run test:backend",
+    "test:frontend": "cd frontend && npm test",
+    "test:backend": "cd backend && npm test",
+    "deploy": "cd infrastructure && cdk deploy",
+    "destroy": "cd infrastructure && cdk destroy"
+  },
+  "workspaces": [
+    "frontend",
+    "backend",
+    "infrastructure",
+    "ml-services"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "dependencies": {
+    "@slack/web-api": "^7.11.0",
+    "@slack/webhook": "^7.0.6",
+    "google-auth-library": "^10.4.0",
+    "googleapis": "^162.0.0"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "taskflow-google-calendar-integration",
+  "version": "1.0.0",
+  "description": "Google Calendar integration service for TaskFlow",
+  "main": "calendar-service.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/calendar-service.js",
+    "dev": "ts-node calendar-service.ts"
+  },
+  "dependencies": {
+    "googleapis": "^126.0.1",
+    "google-auth-library": "^9.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "typescript": "^5.2.2",
+    "ts-node": "^10.9.1"
+  },
+  "keywords": [
+    "google-calendar",
+    "taskflow",
+    "integration",
+    "leave-management"
+  ],
+  "author": "TaskFlow Team",
+  "license": "MIT"
+}
