@@ -8,18 +8,28 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const TASKS_TABLE = process.env.TASKS_TABLE || 'taskflow-tasks';
 
+// Common CORS headers
+const corsHeaders = {
+  'Content-Type': 'application/json',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Accept, Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+  'Access-Control-Max-Age': '86400'
+};
+
 interface Task {
-  id: string;
+  taskId: string; // Primary Key
   title: string;
   description: string;
-  status: 'todo' | 'in-progress' | 'review' | 'done';
-  priority: 'low' | 'medium' | 'high';
-  assigneeId: string;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-  dueDate?: string;
-  tags: string[];
+  assignedBy: string; // userId of the manager who created the task
+  assignedTo?: string; // userId of the user assigned (if already chosen)
+  status: 'pending' | 'in-progress' | 'completed';
+  dueDate: string; // ISO 8601 format
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
+  Task_Complexity: number; // 1–5 scale complexity score
+  Required_Skills: string[]; // e.g., ["Python", "SQL", "AWS"]
+  attachments?: string[]; // (Optional) S3 file URLs
 }
 
 // GET /tasks - List all tasks
@@ -31,10 +41,7 @@ export const listTasks: APIGatewayProxyHandler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({
         tasks: result.Items || [],
         count: result.Count || 0,
@@ -44,10 +51,7 @@ export const listTasks: APIGatewayProxyHandler = async (event) => {
     console.error('Error listing tasks:', error);
     return {
       statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ error: 'Failed to list tasks' }),
     };
   }
@@ -60,46 +64,34 @@ export const getTask: APIGatewayProxyHandler = async (event) => {
     if (!taskId) {
       return {
         statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
         body: JSON.stringify({ error: 'Task ID is required' }),
       };
     }
 
     const result = await docClient.send(new GetCommand({
       TableName: TASKS_TABLE,
-      Key: { id: taskId },
+      Key: { taskId: taskId },
     }));
 
     if (!result.Item) {
       return {
         statusCode: 404,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
         body: JSON.stringify({ error: 'Task not found' }),
       };
     }
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify(result.Item),
     };
   } catch (error) {
     console.error('Error getting task:', error);
     return {
       statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ error: 'Failed to get task' }),
     };
   }
@@ -111,10 +103,7 @@ export const createTask: APIGatewayProxyHandler = async (event) => {
     if (!event.body) {
       return {
         statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
         body: JSON.stringify({ error: 'Request body is required' }),
       };
     }
@@ -123,17 +112,18 @@ export const createTask: APIGatewayProxyHandler = async (event) => {
     const now = new Date().toISOString();
     
     const task: Task = {
-      id: uuidv4(),
+      taskId: uuidv4(),
       title: taskData.title,
       description: taskData.description || '',
-      status: taskData.status || 'todo',
-      priority: taskData.priority || 'medium',
-      assigneeId: taskData.assigneeId,
-      createdBy: taskData.createdBy,
+      status: taskData.status || 'pending',
+      assignedBy: taskData.assignedBy,
+      assignedTo: taskData.assignedTo,
       createdAt: now,
       updatedAt: now,
-      dueDate: taskData.dueDate,
-      tags: taskData.tags || [],
+      dueDate: taskData.dueDate || now,
+      Task_Complexity: taskData.Task_Complexity || 1,
+      Required_Skills: taskData.Required_Skills || [],
+      attachments: taskData.attachments || [],
     };
 
     await docClient.send(new PutCommand({
@@ -143,20 +133,14 @@ export const createTask: APIGatewayProxyHandler = async (event) => {
 
     return {
       statusCode: 201,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify(task),
     };
   } catch (error) {
     console.error('Error creating task:', error);
     return {
       statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ error: 'Failed to create task' }),
     };
   }
@@ -169,10 +153,7 @@ export const updateTask: APIGatewayProxyHandler = async (event) => {
     if (!taskId || !event.body) {
       return {
         statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
         body: JSON.stringify({ error: 'Task ID and request body are required' }),
       };
     }
@@ -186,7 +167,7 @@ export const updateTask: APIGatewayProxyHandler = async (event) => {
 
     // Build dynamic update expression
     Object.keys(updates).forEach((key, index) => {
-      if (key !== 'id' && key !== 'createdAt') {
+      if (key !== 'taskId' && key !== 'createdAt') {
         const attributeName = `#attr${index}`;
         const attributeValue = `:val${index}`;
         
@@ -203,7 +184,7 @@ export const updateTask: APIGatewayProxyHandler = async (event) => {
 
     await docClient.send(new UpdateCommand({
       TableName: TASKS_TABLE,
-      Key: { id: taskId },
+      Key: { taskId: taskId },
       UpdateExpression: `SET ${updateExpression.join(', ')}`,
       ExpressionAttributeNames: expressionAttributeNames,
       ExpressionAttributeValues: expressionAttributeValues,
@@ -212,20 +193,14 @@ export const updateTask: APIGatewayProxyHandler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ message: 'Task updated successfully' }),
     };
   } catch (error) {
     console.error('Error updating task:', error);
     return {
       statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ error: 'Failed to update task' }),
     };
   }
@@ -238,35 +213,26 @@ export const deleteTask: APIGatewayProxyHandler = async (event) => {
     if (!taskId) {
       return {
         statusCode: 400,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
+        headers: corsHeaders,
         body: JSON.stringify({ error: 'Task ID is required' }),
       };
     }
 
     await docClient.send(new DeleteCommand({
       TableName: TASKS_TABLE,
-      Key: { id: taskId },
+      Key: { taskId: taskId },
     }));
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ message: 'Task deleted successfully' }),
     };
   } catch (error) {
     console.error('Error deleting task:', error);
     return {
       statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ error: 'Failed to delete task' }),
     };
   }
@@ -283,29 +249,31 @@ export const getKanbanBoard: APIGatewayProxyHandler = async (event) => {
     
     // Organize tasks by status
     const kanbanData = {
-      todo: tasks.filter(task => task.status === 'todo'),
+      pending: tasks.filter(task => task.status === 'pending'),
       'in-progress': tasks.filter(task => task.status === 'in-progress'),
-      review: tasks.filter(task => task.status === 'review'),
-      done: tasks.filter(task => task.status === 'done'),
+      completed: tasks.filter(task => task.status === 'completed'),
     };
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify(kanbanData),
     };
   } catch (error) {
     console.error('Error getting kanban board:', error);
     return {
       statusCode: 500,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: corsHeaders,
       body: JSON.stringify({ error: 'Failed to get kanban board' }),
     };
   }
+};
+
+// OPTIONS - Handle preflight requests for CORS
+export const handleOptions: APIGatewayProxyHandler = async (event) => {
+  return {
+    statusCode: 200,
+    headers: corsHeaders,
+    body: '',
+  };
 };

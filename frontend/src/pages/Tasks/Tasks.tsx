@@ -34,6 +34,8 @@ import {
   LinearProgress,
   Alert,
   Snackbar,
+  CircularProgress,
+  Backdrop,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -49,119 +51,81 @@ import {
   Flag as FlagIcon,
 } from '@mui/icons-material';
 import { useAuth, useNotification } from '../../context';
+import { TaskService } from '../../services/taskService';
 
 // AWS SDK imports for production use
 // import { DynamoDBClient, ScanCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
 // import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 // import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-interface Task {
-  id: string;
+export interface Task {
+  taskId: string; // Primary Key
   title: string;
   description: string;
-  assigneeId: string;
-  assigneeName: string;
-  assigneeAvatar?: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  status: 'todo' | 'in-progress' | 'review' | 'completed';
-  dueDate: string;
-  createdDate: string;
-  updatedDate: string;
-  tags: string[];
-  attachments: Attachment[];
-  estimatedHours?: number;
-  actualHours?: number;
-  department: string;
-  category: string;
-}
-
-interface Attachment {
-  id: string;
-  name: string;
-  url: string;
-  size: number;
-  type: string;
-  uploadedBy: string;
-  uploadedDate: string;
+  assignedBy: string; // userId of the manager who created the task
+  assignedTo?: string; // userId of the user assigned (if already chosen)
+  status: 'pending' | 'in-progress' | 'completed';
+  dueDate: string; // ISO 8601 format
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
+  Task_Complexity: number; // 1–5 scale complexity score
+  Required_Skills: string[]; // e.g., ["Python", "SQL", "AWS"]
+  attachments?: string[]; // (Optional) S3 file URLs
 }
 
 interface TaskFormData {
   title: string;
   description: string;
-  assigneeId: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  status: 'todo' | 'in-progress' | 'review' | 'completed';
+  assignedTo: string;
+  status: 'pending' | 'in-progress' | 'completed';
   dueDate: string;
-  tags: string[];
-  estimatedHours: number;
-  department: string;
-  category: string;
+  Task_Complexity: number;
+  Required_Skills: string[];
 }
 
 // Mock tasks data (in production, fetch from DynamoDB)
 const mockTasks: Task[] = [
   {
-    id: '1',
+    taskId: '1',
     title: 'Implement user authentication',
     description: 'Set up AWS Cognito for user authentication and authorization',
-    assigneeId: '1',
-    assigneeName: 'John Doe',
-    priority: 'high',
+    assignedBy: 'manager1',
+    assignedTo: 'user1',
     status: 'in-progress',
-    dueDate: '2025-10-15',
-    createdDate: '2025-10-01',
-    updatedDate: '2025-10-11',
-    tags: ['backend', 'security', 'aws'],
+    dueDate: '2025-10-15T00:00:00Z',
+    createdAt: '2025-10-01T09:00:00Z',
+    updatedAt: '2025-10-11T14:30:00Z',
+    Task_Complexity: 4,
+    Required_Skills: ['AWS', 'Node.js', 'Security', 'Cognito'],
     attachments: [],
-    estimatedHours: 16,
-    actualHours: 8,
-    department: 'Engineering',
-    category: 'Development',
   },
   {
-    id: '2',
+    taskId: '2',
     title: 'Design dashboard UI',
     description: 'Create responsive dashboard layout with Material-UI components',
-    assigneeId: '2',
-    assigneeName: 'Jane Smith',
-    priority: 'medium',
-    status: 'review',
-    dueDate: '2025-10-12',
-    createdDate: '2025-10-05',
-    updatedDate: '2025-10-10',
-    tags: ['frontend', 'ui', 'design'],
-    attachments: [
-      {
-        id: 'att1',
-        name: 'dashboard-mockup.pdf',
-        url: '#',
-        size: 2048576,
-        type: 'application/pdf',
-        uploadedBy: 'Jane Smith',
-        uploadedDate: '2025-10-10',
-      },
-    ],
-    estimatedHours: 12,
-    actualHours: 10,
-    department: 'Design',
-    category: 'UI/UX',
+    assignedBy: 'manager1',
+    assignedTo: 'user2',
+    status: 'completed',
+    dueDate: '2025-10-12T00:00:00Z',
+    createdAt: '2025-10-05T10:00:00Z',
+    updatedAt: '2025-10-10T16:45:00Z',
+    Task_Complexity: 3,
+    Required_Skills: ['React', 'Material-UI', 'TypeScript', 'CSS'],
+    attachments: ['https://s3.amazonaws.com/taskflow-attachments/dashboard-mockup.pdf'],
   },
   {
-    id: '3',
+    taskId: '3',
     title: 'Set up CI/CD pipeline',
     description: 'Configure AWS CodePipeline for automated deployment',
-    assigneeId: '1',
-    assigneeName: 'John Doe',
-    priority: 'critical',
-    status: 'todo',
-    dueDate: '2025-10-20',
-    createdDate: '2025-10-08',
-    updatedDate: '2025-10-08',
-    tags: ['devops', 'aws', 'automation'],
+    assignedBy: 'manager1',
+    assignedTo: 'user1',
+    status: 'pending',
+    dueDate: '2025-10-20T00:00:00Z',
+    createdAt: '2025-10-08T11:00:00Z',
+    updatedAt: '2025-10-08T11:00:00Z',
+    Task_Complexity: 5,
+    Required_Skills: ['AWS', 'DevOps', 'CodePipeline', 'Docker'],
     attachments: [],
-    estimatedHours: 24,
-    department: 'Engineering',
-    category: 'DevOps',
   },
 ];
 
@@ -185,61 +149,87 @@ const Tasks: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Form state
   const [formData, setFormData] = useState<TaskFormData>({
     title: '',
     description: '',
-    assigneeId: '',
-    priority: 'medium',
-    status: 'todo',
+    assignedTo: '',
+    status: 'pending',
     dueDate: '',
-    tags: [],
-    estimatedHours: 0,
-    department: '',
-    category: '',
+    Task_Complexity: 1,
+    Required_Skills: [],
   });
 
   // Mock team members (in production, fetch from DynamoDB Users table)
-  const teamMembers = [
-    { id: '1', name: 'John Doe', avatar: '', department: 'Engineering' },
-    { id: '2', name: 'Jane Smith', avatar: '', department: 'Design' },
-    { id: '3', name: 'Mike Johnson', avatar: '', department: 'Marketing' },
-    { id: '4', name: 'Sarah Wilson', avatar: '', department: 'Engineering' },
-  ];
+  const teamMembers = useMemo(() => [
+    { id: 'user1', name: 'John Doe', avatar: '', department: 'Engineering' },
+    { id: 'user2', name: 'Jane Smith', avatar: '', department: 'Design' },
+    { id: 'user3', name: 'Mike Johnson', avatar: '', department: 'Marketing' },
+    { id: 'user4', name: 'Sarah Wilson', avatar: '', department: 'Engineering' },
+  ], []);
 
-  // Initialize tasks (in production, fetch from DynamoDB)
+  // Initialize tasks - fetch from Lambda API
   useEffect(() => {
-    // For demo purposes, set data immediately
-    setTasks(mockTasks);
+    const fetchTasks = async () => {
+      try {
+        setInitialLoading(true);
+        console.log('Attempting to fetch tasks from API...');
+        const fetchedTasks = await TaskService.getAllTasks();
+        console.log('API Response:', fetchedTasks);
+        setTasks(fetchedTasks);
+        
+        // If no tasks exist in the API, you can optionally load mock data
+        if (fetchedTasks.length === 0) {
+          console.log('No tasks found in API, using mock data for development');
+          setTasks(mockTasks);
+        }
+      } catch (error) {
+        console.error('Detailed API Error:', {
+          message: error instanceof Error ? error.message : 'Unknown error',
+          error: error,
+          stack: error instanceof Error ? error.stack : undefined
+        });
+        
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('CORS')) {
+          showError('CORS Issue: Your API needs to allow requests from localhost:3000. Configure CORS in API Gateway or check the troubleshooting guide.');
+        } else {
+          showError(`API Connection Failed: ${errorMessage}. Using mock data for development.`);
+        }
+        
+        // Fallback to mock data if API fails
+        setTasks(mockTasks);
+      } finally {
+        setInitialLoading(false);
+      }
+    };
     
-    // In production, use this async function:
-    // const fetchTasks = async () => {
-    //   try {
-    //     const dynamoClient = new DynamoDBClient({ region: 'us-east-1' });
-    //     const command = new ScanCommand({ TableName: 'TaskFlow-Tasks' });
-    //     const response = await dynamoClient.send(command);
-    //     setTasks(response.Items || []);
-    //   } catch (error) {
-    //     console.error('Error fetching tasks:', error);
-    //     showError('Failed to load tasks');
-    //   }
-    // };
-    // fetchTasks();
-  }, []); // Removed dependencies to prevent re-execution
+    fetchTasks();
+  }, [showError]); // Added showError to dependencies
 
   // Filter and search tasks (memoized to prevent unnecessary re-calculations)
   const filteredTasks = useMemo(() => {
     return tasks.filter(task => {
       const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
-      const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
-      const matchesSearch = task.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           task.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           task.assigneeName.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesComplexity = filterPriority === 'all' || 
+        (filterPriority === 'low' && task.Task_Complexity <= 2) ||
+        (filterPriority === 'medium' && task.Task_Complexity === 3) ||
+        (filterPriority === 'high' && task.Task_Complexity >= 4);
+      const assigneeName = teamMembers.find(m => m.id === task.assignedTo)?.name || 'Unassigned';
       
-      return matchesStatus && matchesPriority && matchesSearch;
+      // Safe string operations with null checks
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = (task.title || '').toLowerCase().includes(searchLower) ||
+                           (task.description || '').toLowerCase().includes(searchLower) ||
+                           (assigneeName || '').toLowerCase().includes(searchLower) ||
+                           (task.Required_Skills || []).some(skill => (skill || '').toLowerCase().includes(searchLower));
+      
+      return matchesStatus && matchesComplexity && matchesSearch;
     });
-  }, [tasks, filterStatus, filterPriority, searchTerm]);
+  }, [tasks, filterStatus, filterPriority, searchTerm, teamMembers]);
 
   // Create or update task
   const handleSaveTask = async () => {
@@ -249,48 +239,67 @@ const Tasks: React.FC = () => {
         return;
       }
 
-      const now = new Date().toISOString();
-      const taskData: Task = {
-        id: editingTask?.id || Date.now().toString(),
-        ...formData,
-        assigneeName: teamMembers.find(m => m.id === formData.assigneeId)?.name || 'Unassigned',
-        createdDate: editingTask?.createdDate || now,
-        updatedDate: now,
+      setLoading(true);
+
+      const taskRequestData = {
+        title: formData.title,
+        description: formData.description,
+        assignedBy: user?.id || 'user-manager-12345', // Use actual user ID from auth context
+        assignedTo: formData.assignedTo || undefined,
+        status: formData.status,
+        dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : new Date().toISOString(),
+        Task_Complexity: formData.Task_Complexity,
+        Required_Skills: formData.Required_Skills,
         attachments: editingTask?.attachments || [],
-        actualHours: editingTask?.actualHours || 0,
       };
 
+      let updatedTask: Task;
+
       if (editingTask) {
-        // TODO: Replace with DynamoDB UpdateItem
-        // const updateCommand = new UpdateItemCommand({ ... });
-        setTasks(prev => prev.map(task => task.id === editingTask.id ? taskData : task));
+        // Update existing task via API
+        updatedTask = await TaskService.updateTask(editingTask.taskId, taskRequestData);
+        setTasks(prev => prev.map(task => task.taskId === editingTask.taskId ? updatedTask : task));
         showSuccess('Task updated successfully');
       } else {
-        // TODO: Replace with DynamoDB PutItem
-        // const putCommand = new PutItemCommand({ ... });
-        setTasks(prev => [...prev, taskData]);
-        showSuccess('Task created successfully');
+        // Create new task via API
+        updatedTask = await TaskService.createTask(taskRequestData);
+        setTasks(prev => [...prev, updatedTask]);
+        
+        // Show different message for mock tasks vs real API tasks
+        if (updatedTask && updatedTask.taskId && updatedTask.taskId.startsWith('mock-')) {
+          showSuccess('Task created successfully (offline mode - configure API Gateway CORS for full functionality)');
+        } else {
+          showSuccess('Task created successfully');
+        }
       }
 
       handleCloseDialog();
     } catch (error) {
       console.error('Error saving task:', error);
-      showError('Failed to save task');
+      showError(`Failed to ${editingTask ? 'update' : 'create'} task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
   // Delete task
   const handleDeleteTask = async (task: Task) => {
     try {
-      // TODO: Replace with DynamoDB DeleteItem
-      // const deleteCommand = new DeleteItemCommand({ ... });
-      setTasks(prev => prev.filter(t => t.id !== task.id));
+      setLoading(true);
+      
+      // Delete task via API
+      await TaskService.deleteTask(task.taskId);
+      
+      // Update local state
+      setTasks(prev => prev.filter(t => t.taskId !== task.taskId));
       showSuccess('Task deleted successfully');
       setDeleteConfirmOpen(false);
       setTaskToDelete(null);
     } catch (error) {
       console.error('Error deleting task:', error);
-      showError('Failed to delete task');
+      showError(`Failed to delete task: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -312,19 +321,11 @@ const Tasks: React.FC = () => {
       // Mock upload delay
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      const attachment: Attachment = {
-        id: Date.now().toString(),
-        name: file.name,
-        url: `https://taskflow-attachments.s3.amazonaws.com/tasks/${taskId}/${file.name}`,
-        size: file.size,
-        type: file.type,
-        uploadedBy: user?.name || 'Unknown',
-        uploadedDate: new Date().toISOString(),
-      };
+      const attachmentUrl = `https://taskflow-attachments.s3.amazonaws.com/tasks/${taskId}/${file.name}`;
 
       setTasks(prev => prev.map(task => 
-        task.id === taskId 
-          ? { ...task, attachments: [...task.attachments, attachment] }
+        task.taskId === taskId 
+          ? { ...task, attachments: [...(task.attachments || []), attachmentUrl] }
           : task
       ));
 
@@ -340,15 +341,34 @@ const Tasks: React.FC = () => {
   // Update task status quickly
   const handleStatusChange = async (taskId: string, newStatus: Task['status']) => {
     try {
+      // Optimistically update the UI first for better UX
       setTasks(prev => prev.map(task => 
-        task.id === taskId 
-          ? { ...task, status: newStatus, updatedDate: new Date().toISOString() }
+        task.taskId === taskId 
+          ? { ...task, status: newStatus, updatedAt: new Date().toISOString() }
           : task
       ));
-      showSuccess(`Task status updated to ${newStatus}`);
+      
+      // Update via API
+      const updatedTask = await TaskService.updateTaskStatus(taskId, newStatus);
+      
+      // Sync with API response (in case there are server-side modifications)
+      setTasks(prev => prev.map(task => 
+        task.taskId === taskId ? updatedTask : task
+      ));
+      
+      showSuccess(`Task status updated to ${(newStatus || 'pending').replace('-', ' ')}`);
     } catch (error) {
       console.error('Error updating task status:', error);
-      showError('Failed to update task status');
+      
+      // Revert optimistic update on error
+      const originalTask = tasks.find(t => t.taskId === taskId);
+      if (originalTask) {
+        setTasks(prev => prev.map(task => 
+          task.taskId === taskId ? originalTask : task
+        ));
+      }
+      
+      showError(`Failed to update task status: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -357,30 +377,24 @@ const Tasks: React.FC = () => {
     if (task) {
       setEditingTask(task);
       setFormData({
-        title: task.title,
-        description: task.description,
-        assigneeId: task.assigneeId,
-        priority: task.priority,
-        status: task.status,
-        dueDate: task.dueDate,
-        tags: task.tags,
-        estimatedHours: task.estimatedHours || 0,
-        department: task.department,
-        category: task.category,
+        title: task.title || '',
+        description: task.description || '',
+        assignedTo: task.assignedTo || '',
+        status: task.status || 'pending',
+        dueDate: (task.dueDate || new Date().toISOString()).split('T')[0], // Extract date part for input field
+        Task_Complexity: task.Task_Complexity || 1,
+        Required_Skills: task.Required_Skills || [],
       });
     } else {
       setEditingTask(null);
       setFormData({
         title: '',
         description: '',
-        assigneeId: '',
-        priority: 'medium',
-        status: 'todo',
+        assignedTo: '',
+        status: 'pending',
         dueDate: '',
-        tags: [],
-        estimatedHours: 0,
-        department: '',
-        category: '',
+        Task_Complexity: 1,
+        Required_Skills: [],
       });
     }
     setOpenDialog(true);
@@ -402,15 +416,12 @@ const Tasks: React.FC = () => {
     setSelectedTask(null);
   };
 
-  // Priority color mapping
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'error';
-      case 'high': return 'warning';
-      case 'medium': return 'info';
-      case 'low': return 'success';
-      default: return 'default';
-    }
+  // Complexity color mapping
+  const getComplexityColor = (complexity: number) => {
+    if (complexity >= 4) return 'error'; // High complexity (4-5)
+    if (complexity === 3) return 'warning'; // Medium complexity (3)
+    if (complexity <= 2) return 'success'; // Low complexity (1-2)
+    return 'default';
   };
 
   // Status color mapping
@@ -418,28 +429,39 @@ const Tasks: React.FC = () => {
     switch (status) {
       case 'completed': return 'success';
       case 'in-progress': return 'primary';
-      case 'review': return 'warning';
-      case 'todo': return 'default';
+      case 'pending': return 'default';
       default: return 'default';
     }
   };
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
-          Tasks Management
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{ borderRadius: 2 }}
-        >
-          Create Task
-        </Button>
-      </Box>
+      {/* Initial Loading State */}
+      {initialLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '70vh' }}>
+          <CircularProgress size={60} />
+          <Typography variant="h6" sx={{ ml: 2 }}>
+            Loading tasks...
+          </Typography>
+        </Box>
+      ) : (
+        <>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h4" component="h1">
+              Tasks Management
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenDialog()}
+              sx={{ borderRadius: 2 }}
+            >
+              Create Task
+            </Button>
+          </Box>
+
+          {/* API Tester removed - issue identified as API Gateway CORS configuration */}
 
       {/* Statistics Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -493,9 +515,9 @@ const Tasks: React.FC = () => {
                 <FlagIcon color="error" sx={{ mr: 2, fontSize: 40 }} />
                 <Box>
                   <Typography variant="h4">
-                    {tasks.filter(t => t.priority === 'critical' || t.priority === 'high').length}
+                    {tasks.filter(t => t.Task_Complexity >= 4).length}
                   </Typography>
-                  <Typography color="textSecondary">High Priority</Typography>
+                  <Typography color="textSecondary">High Complexity</Typography>
                 </Box>
               </Box>
             </CardContent>
@@ -524,26 +546,24 @@ const Tasks: React.FC = () => {
                 label="Status"
               >
                 <MenuItem value="all">All Status</MenuItem>
-                <MenuItem value="todo">To Do</MenuItem>
+                <MenuItem value="pending">Pending</MenuItem>
                 <MenuItem value="in-progress">In Progress</MenuItem>
-                <MenuItem value="review">Review</MenuItem>
                 <MenuItem value="completed">Completed</MenuItem>
               </Select>
             </FormControl>
           </Grid>
           <Grid item xs={12} md={3}>
             <FormControl fullWidth size="small">
-              <InputLabel>Priority</InputLabel>
+              <InputLabel>Complexity</InputLabel>
               <Select
                 value={filterPriority}
                 onChange={(e) => setFilterPriority(e.target.value)}
-                label="Priority"
+                label="Complexity"
               >
-                <MenuItem value="all">All Priority</MenuItem>
-                <MenuItem value="low">Low</MenuItem>
-                <MenuItem value="medium">Medium</MenuItem>
-                <MenuItem value="high">High</MenuItem>
-                <MenuItem value="critical">Critical</MenuItem>
+                <MenuItem value="all">All Complexity</MenuItem>
+                <MenuItem value="low">Low (1-2)</MenuItem>
+                <MenuItem value="medium">Medium (3)</MenuItem>
+                <MenuItem value="high">High (4-5)</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -562,16 +582,16 @@ const Tasks: React.FC = () => {
             <TableRow>
               <TableCell>Task</TableCell>
               <TableCell>Assignee</TableCell>
-              <TableCell>Priority</TableCell>
+              <TableCell>Complexity</TableCell>
               <TableCell>Status</TableCell>
               <TableCell>Due Date</TableCell>
-              <TableCell>Progress</TableCell>
+              <TableCell>Created</TableCell>
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredTasks.map((task) => (
-              <TableRow key={task.id} hover>
+              <TableRow key={task.taskId} hover>
                 <TableCell>
                   <Box>
                     <Typography variant="subtitle2" fontWeight="bold">
@@ -581,10 +601,10 @@ const Tasks: React.FC = () => {
                       {task.description}
                     </Typography>
                     <Box sx={{ mt: 1 }}>
-                      {task.tags.map((tag) => (
+                      {(task.Required_Skills || []).map((skill) => (
                         <Chip
-                          key={tag}
-                          label={tag}
+                          key={skill}
+                          label={skill}
                           size="small"
                           sx={{ mr: 0.5, mb: 0.5 }}
                         />
@@ -594,31 +614,39 @@ const Tasks: React.FC = () => {
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    <Avatar sx={{ width: 32, height: 32, mr: 1 }}>
-                      {task.assigneeName.charAt(0)}
-                    </Avatar>
-                    <Typography variant="body2">
-                      {task.assigneeName}
-                    </Typography>
+                    {task.assignedTo ? (
+                      <>
+                        <Avatar sx={{ width: 32, height: 32, mr: 1 }}>
+                          {teamMembers.find(m => m.id === task.assignedTo)?.name?.charAt(0) || 'U'}
+                        </Avatar>
+                        <Typography variant="body2">
+                          {teamMembers.find(m => m.id === task.assignedTo)?.name || 'Unknown'}
+                        </Typography>
+                      </>
+                    ) : (
+                      <Typography variant="body2" color="textSecondary">
+                        Unassigned
+                      </Typography>
+                    )}
                   </Box>
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={task.priority.toUpperCase()}
-                    color={getPriorityColor(task.priority) as any}
+                    label={`Level ${task.Task_Complexity}`}
+                    color={getComplexityColor(task.Task_Complexity) as any}
                     size="small"
                   />
                 </TableCell>
                 <TableCell>
                   <Chip
-                    label={task.status.replace('-', ' ').toUpperCase()}
-                    color={getStatusColor(task.status) as any}
+                    label={(task.status || 'pending').replace('-', ' ').toUpperCase()}
+                    color={getStatusColor(task.status || 'pending') as any}
                     size="small"
                     onClick={() => {
-                      const statuses: Task['status'][] = ['todo', 'in-progress', 'review', 'completed'];
-                      const currentIndex = statuses.indexOf(task.status);
+                      const statuses: Task['status'][] = ['pending', 'in-progress', 'completed'];
+                      const currentIndex = statuses.indexOf(task.status || 'pending');
                       const nextStatus = statuses[(currentIndex + 1) % statuses.length];
-                      handleStatusChange(task.id, nextStatus);
+                      handleStatusChange(task.taskId, nextStatus);
                     }}
                     sx={{ cursor: 'pointer' }}
                   />
@@ -632,21 +660,12 @@ const Tasks: React.FC = () => {
                   </Box>
                 </TableCell>
                 <TableCell>
-                  <Box sx={{ width: 100 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                      <Typography variant="caption">
-                        {task.actualHours || 0}h / {task.estimatedHours || 0}h
-                      </Typography>
-                      <Typography variant="caption">
-                        {task.estimatedHours ? Math.round(((task.actualHours || 0) / task.estimatedHours) * 100) : 0}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={task.estimatedHours ? ((task.actualHours || 0) / task.estimatedHours) * 100 : 0}
-                      sx={{ height: 6, borderRadius: 3 }}
-                    />
-                  </Box>
+                  <Typography variant="body2">
+                    {new Date(task.createdAt).toLocaleDateString()}
+                  </Typography>
+                  <Typography variant="caption" color="textSecondary">
+                    {new Date(task.createdAt).toLocaleTimeString()}
+                  </Typography>
                 </TableCell>
                 <TableCell>
                   <IconButton
@@ -707,7 +726,7 @@ const Tasks: React.FC = () => {
               const files = (e.target as HTMLInputElement).files;
               if (files) {
                 Array.from(files).forEach(file => {
-                  handleFileUpload(file, selectedTask.id);
+                  handleFileUpload(file, selectedTask.taskId);
                 });
               }
             };
@@ -760,12 +779,15 @@ const Tasks: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
-                <InputLabel>Assignee</InputLabel>
+                <InputLabel>Assign To</InputLabel>
                 <Select
-                  value={formData.assigneeId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, assigneeId: e.target.value }))}
-                  label="Assignee"
+                  value={formData.assignedTo}
+                  onChange={(e) => setFormData(prev => ({ ...prev, assignedTo: e.target.value }))}
+                  label="Assign To"
                 >
+                  <MenuItem value="">
+                    <Typography color="textSecondary">Unassigned</Typography>
+                  </MenuItem>
                   {teamMembers.map((member) => (
                     <MenuItem key={member.id} value={member.id}>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -781,16 +803,17 @@ const Tasks: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
-                <InputLabel>Priority</InputLabel>
+                <InputLabel>Task Complexity</InputLabel>
                 <Select
-                  value={formData.priority}
-                  onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value as any }))}
-                  label="Priority"
+                  value={formData.Task_Complexity}
+                  onChange={(e) => setFormData(prev => ({ ...prev, Task_Complexity: Number(e.target.value) }))}
+                  label="Task Complexity"
                 >
-                  <MenuItem value="low">Low</MenuItem>
-                  <MenuItem value="medium">Medium</MenuItem>
-                  <MenuItem value="high">High</MenuItem>
-                  <MenuItem value="critical">Critical</MenuItem>
+                  <MenuItem value={1}>Level 1 - Very Easy</MenuItem>
+                  <MenuItem value={2}>Level 2 - Easy</MenuItem>
+                  <MenuItem value={3}>Level 3 - Medium</MenuItem>
+                  <MenuItem value={4}>Level 4 - Hard</MenuItem>
+                  <MenuItem value={5}>Level 5 - Very Hard</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -802,9 +825,8 @@ const Tasks: React.FC = () => {
                   onChange={(e) => setFormData(prev => ({ ...prev, status: e.target.value as any }))}
                   label="Status"
                 >
-                  <MenuItem value="todo">To Do</MenuItem>
+                  <MenuItem value="pending">Pending</MenuItem>
                   <MenuItem value="in-progress">In Progress</MenuItem>
-                  <MenuItem value="review">Review</MenuItem>
                   <MenuItem value="completed">Completed</MenuItem>
                 </Select>
               </FormControl>
@@ -819,49 +841,30 @@ const Tasks: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Department"
-                value={formData.department}
-                onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Category"
-                value={formData.category}
-                onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Estimated Hours"
-                type="number"
-                value={formData.estimatedHours}
-                onChange={(e) => setFormData(prev => ({ ...prev, estimatedHours: Number(e.target.value) }))}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Tags (comma separated)"
-                value={formData.tags.join(', ')}
+                label="Required Skills (comma separated)"
+                value={formData.Required_Skills.join(', ')}
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
-                  tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
+                  Required_Skills: e.target.value.split(',').map(skill => skill.trim()).filter(Boolean)
                 }))}
-                placeholder="frontend, urgent, bug"
+                placeholder="Python, SQL, AWS, React"
+                helperText="Enter the skills required for this task, separated by commas"
               />
             </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDialog}>Cancel</Button>
-          <Button onClick={handleSaveTask} variant="contained">
-            {editingTask ? 'Update' : 'Create'} Task
+          <Button onClick={handleCloseDialog} disabled={loading}>Cancel</Button>
+          <Button 
+            onClick={handleSaveTask} 
+            variant="contained"
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={16} /> : null}
+          >
+            {loading ? 'Saving...' : `${editingTask ? 'Update' : 'Create'} Task`}
           </Button>
         </DialogActions>
       </Dialog>
@@ -875,13 +878,15 @@ const Tasks: React.FC = () => {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={() => setDeleteConfirmOpen(false)} disabled={loading}>Cancel</Button>
           <Button 
             onClick={() => taskToDelete && handleDeleteTask(taskToDelete)} 
             color="error"
             variant="contained"
+            disabled={loading}
+            startIcon={loading ? <CircularProgress size={16} /> : null}
           >
-            Delete
+            {loading ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -898,17 +903,27 @@ const Tasks: React.FC = () => {
         </Snackbar>
       )}
 
-      {/* Floating Action Button for Quick Task Creation */}
-      <Tooltip title="Create Task">
-        <Fab
-          color="primary"
-          aria-label="add task"
-          sx={{ position: 'fixed', bottom: 24, right: 24 }}
-          onClick={() => handleOpenDialog()}
-        >
-          <AddIcon />
-        </Fab>
-      </Tooltip>
+          {/* Floating Action Button for Quick Task Creation */}
+          <Tooltip title="Create Task">
+            <Fab
+              color="primary"
+              aria-label="add task"
+              sx={{ position: 'fixed', bottom: 24, right: 24 }}
+              onClick={() => handleOpenDialog()}
+            >
+              <AddIcon />
+            </Fab>
+          </Tooltip>
+        </>
+      )}
+
+      {/* Loading Backdrop */}
+      <Backdrop
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        open={loading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
     </Box>
   );
 };

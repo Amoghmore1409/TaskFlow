@@ -44,6 +44,7 @@ import {
 } from '@mui/icons-material';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import { useNotification } from '../../context';
+import { TaskService } from '../../services/taskService';
 
 // AWS SDK imports for production use
 // TODO: Uncomment these imports when deploying to production with AWS
@@ -52,35 +53,28 @@ import { useNotification } from '../../context';
 // import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 interface Task {
-  id: string;
+  taskId: string; // Primary Key
   title: string;
   description: string;
-  assigneeId: string;
-  assigneeName: string;
-  assigneeAvatar?: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  status: 'todo' | 'in-progress' | 'review' | 'completed';
-  dueDate: string;
-  createdDate: string;
-  updatedDate: string;
-  tags: string[];
-  estimatedHours?: number;
-  actualHours?: number;
-  department: string;
-  category: string;
-  attachments: number;
+  assignedBy: string; // userId of the manager who created the task
+  assignedTo?: string; // userId of the user assigned (if already chosen)
+  status: 'pending' | 'in-progress' | 'completed';
+  dueDate: string; // ISO 8601 format
+  createdAt: string; // ISO 8601
+  updatedAt: string; // ISO 8601
+  Task_Complexity: number; // 1–5 scale complexity score
+  Required_Skills: string[]; // e.g., ["Python", "SQL", "AWS"]
+  attachments?: string[]; // (Optional) S3 file URLs
 }
 
 interface TaskFormData {
   title: string;
   description: string;
-  assigneeId: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
+  assignedTo: string;
+  status: 'pending' | 'in-progress' | 'completed';
   dueDate: string;
-  tags: string[];
-  estimatedHours: number;
-  department: string;
-  category: string;
+  Task_Complexity: number;
+  Required_Skills: string[];
 }
 
 interface Column {
@@ -95,101 +89,82 @@ interface Column {
 // Mock data - Replace with AWS DynamoDB queries in production
 const mockTasks: Task[] = [
   {
-    id: '1',
+    taskId: 'kanban_1',
     title: 'Implement AWS Cognito Authentication',
     description: 'Set up user authentication and authorization using AWS Cognito',
-    assigneeId: '1',
-    assigneeName: 'John Doe',
-    priority: 'high',
+    assignedBy: 'manager1',
+    assignedTo: 'user1',
     status: 'in-progress',
-    dueDate: '2025-10-15',
-    createdDate: '2025-10-01',
-    updatedDate: '2025-10-11',
-    tags: ['backend', 'security', 'aws'],
-    estimatedHours: 16,
-    actualHours: 8,
-    department: 'Engineering',
-    category: 'Development',
-    attachments: 2,
+    dueDate: '2025-10-15T00:00:00Z',
+    createdAt: '2025-10-01T09:00:00Z',
+    updatedAt: '2025-10-11T14:30:00Z',
+    Task_Complexity: 4,
+    Required_Skills: ['AWS', 'Cognito', 'Node.js', 'Security'],
+    attachments: ['https://s3.amazonaws.com/taskflow-attachments/auth-spec.pdf', 'https://s3.amazonaws.com/taskflow-attachments/cognito-setup.md'],
   },
   {
-    id: '2',
+    taskId: 'kanban_2',
     title: 'Design System Setup',
     description: 'Create reusable components with Material-UI design system',
-    assigneeId: '2',
-    assigneeName: 'Jane Smith',
-    priority: 'medium',
-    status: 'review',
-    dueDate: '2025-10-12',
-    createdDate: '2025-10-05',
-    updatedDate: '2025-10-10',
-    tags: ['frontend', 'ui', 'design'],
-    estimatedHours: 12,
-    actualHours: 10,
-    department: 'Design',
-    category: 'UI/UX',
-    attachments: 1,
+    assignedBy: 'manager1',
+    assignedTo: 'user2',
+    status: 'completed',
+    dueDate: '2025-10-12T00:00:00Z',
+    createdAt: '2025-10-05T10:00:00Z',
+    updatedAt: '2025-10-10T16:45:00Z',
+    Task_Complexity: 3,
+    Required_Skills: ['React', 'Material-UI', 'TypeScript', 'Design Systems'],
+    attachments: ['https://s3.amazonaws.com/taskflow-attachments/design-tokens.json'],
   },
   {
-    id: '3',
+    taskId: 'kanban_3',
     title: 'AWS Lambda Functions',
     description: 'Implement serverless functions for task management APIs',
-    assigneeId: '1',
-    assigneeName: 'John Doe',
-    priority: 'critical',
-    status: 'todo',
-    dueDate: '2025-10-20',
-    createdDate: '2025-10-08',
-    updatedDate: '2025-10-08',
-    tags: ['backend', 'aws', 'serverless'],
-    estimatedHours: 24,
-    department: 'Engineering',
-    category: 'Development',
-    attachments: 0,
+    assignedBy: 'manager1',
+    assignedTo: 'user1',
+    status: 'pending',
+    dueDate: '2025-10-20T00:00:00Z',
+    createdAt: '2025-10-08T11:00:00Z',
+    updatedAt: '2025-10-08T11:00:00Z',
+    Task_Complexity: 5,
+    Required_Skills: ['AWS Lambda', 'Node.js', 'DynamoDB', 'API Gateway'],
+    attachments: [],
   },
   {
-    id: '4',
+    taskId: 'kanban_4',
     title: 'Code Review Process',
     description: 'Review and approve pull requests for the authentication module',
-    assigneeId: '3',
-    assigneeName: 'Mike Johnson',
-    priority: 'medium',
+    assignedBy: 'manager1',
+    assignedTo: 'user3',
     status: 'completed',
-    dueDate: '2025-10-10',
-    createdDate: '2025-10-02',
-    updatedDate: '2025-10-09',
-    tags: ['review', 'qa'],
-    estimatedHours: 4,
-    actualHours: 3,
-    department: 'Engineering',
-    category: 'QA',
-    attachments: 0,
+    dueDate: '2025-10-10T00:00:00Z',
+    createdAt: '2025-10-02T14:00:00Z',
+    updatedAt: '2025-10-09T17:30:00Z',
+    Task_Complexity: 2,
+    Required_Skills: ['Code Review', 'Git', 'QA'],
+    attachments: [],
   },
   {
-    id: '5',
+    taskId: 'kanban_5',
     title: 'DynamoDB Schema Design',
     description: 'Design and implement database schema for task management',
-    assigneeId: '4',
-    assigneeName: 'Sarah Wilson',
-    priority: 'high',
+    assignedBy: 'manager1',
+    assignedTo: 'user4',
     status: 'in-progress',
-    dueDate: '2025-10-18',
-    createdDate: '2025-10-06',
-    updatedDate: '2025-10-11',
-    tags: ['database', 'aws', 'schema'],
-    estimatedHours: 20,
-    actualHours: 12,
-    department: 'Engineering',
-    category: 'Database',
-    attachments: 3,
+    dueDate: '2025-10-18T00:00:00Z',
+    createdAt: '2025-10-06T12:00:00Z',
+    updatedAt: '2025-10-11T15:20:00Z',
+    Task_Complexity: 4,
+    Required_Skills: ['DynamoDB', 'Database Design', 'AWS', 'NoSQL'],
+    attachments: ['https://s3.amazonaws.com/taskflow-attachments/schema-v1.json', 'https://s3.amazonaws.com/taskflow-attachments/entity-diagram.png', 'https://s3.amazonaws.com/taskflow-attachments/access-patterns.md'],
   },
 ];
 
 const teamMembers = [
-  { id: '1', name: 'John Doe', avatar: '', department: 'Engineering' },
-  { id: '2', name: 'Jane Smith', avatar: '', department: 'Design' },
-  { id: '3', name: 'Mike Johnson', avatar: '', department: 'Engineering' },
-  { id: '4', name: 'Sarah Wilson', avatar: '', department: 'Engineering' },
+  { id: 'user1', name: 'John Doe', avatar: '', department: 'Engineering' },
+  { id: 'user2', name: 'Jane Smith', avatar: '', department: 'Design' },
+  { id: 'user3', name: 'Mike Johnson', avatar: '', department: 'Engineering' },
+  { id: 'user4', name: 'Sarah Wilson', avatar: '', department: 'Engineering' },
 ];
 
 const KanbanBoard: React.FC = () => {
@@ -213,21 +188,19 @@ const KanbanBoard: React.FC = () => {
   const [formData, setFormData] = useState<TaskFormData>({
     title: '',
     description: '',
-    assigneeId: '',
-    priority: 'medium',
+    assignedTo: '',
+    status: 'pending',
     dueDate: '',
-    tags: [],
-    estimatedHours: 0,
-    department: '',
-    category: '',
+    Task_Complexity: 1,
+    Required_Skills: [],
   });
 
   // Define Kanban columns
   const columns: Column[] = [
     {
-      id: 'todo',
-      title: 'To Do',
-      status: 'todo',
+      id: 'pending',
+      title: 'Pending',
+      status: 'pending',
       color: '#f5f5f5',
       icon: <AssignmentIcon />,
     },
@@ -240,13 +213,6 @@ const KanbanBoard: React.FC = () => {
       maxItems: 3, // WIP limit
     },
     {
-      id: 'review',
-      title: 'Review',
-      status: 'review',
-      color: '#fff3e0',
-      icon: <ViewIcon />,
-    },
-    {
       id: 'completed',
       title: 'Completed',
       status: 'completed',
@@ -257,32 +223,26 @@ const KanbanBoard: React.FC = () => {
 
   // Load tasks on component mount
   useEffect(() => {
-    // TODO: Replace with actual DynamoDB query in production
-    // const fetchTasks = async () => {
-    //   try {
-    //     const dynamoClient = new DynamoDBClient({ region: 'us-east-1' });
-    //     const command = new ScanCommand({ 
-    //       TableName: 'TaskFlow-Tasks',
-    //       FilterExpression: 'attribute_exists(#status)',
-    //       ExpressionAttributeNames: { '#status': 'status' }
-    //     });
-    //     const response = await dynamoClient.send(command);
-    //     setTasks(response.Items?.map(item => ({
-    //       // Map DynamoDB item to Task interface
-    //       id: item.id.S,
-    //       title: item.title.S,
-    //       // ... other mappings
-    //     })) || []);
-    //   } catch (error) {
-    //     console.error('Error fetching tasks:', error);
-    //     showError('Failed to load tasks');
-    //   }
-    // };
-    // fetchTasks();
-
-    // For demo purposes, use mock data
-    setTasks(mockTasks);
-  }, []);
+    const fetchTasks = async () => {
+      try {
+        const fetchedTasks = await TaskService.getAllTasks();
+        setTasks(fetchedTasks);
+        
+        // If no tasks exist in the API, you can optionally load mock data
+        if (fetchedTasks.length === 0) {
+          console.log('No tasks found in API, using mock data for development');
+          setTasks(mockTasks);
+        }
+      } catch (error) {
+        console.error('Error fetching tasks:', error);
+        showError('Failed to load tasks from server. Loading mock data for development.');
+        // Fallback to mock data if API fails
+        setTasks(mockTasks);
+      }
+    };
+    
+    fetchTasks();
+  }, [showError]);
 
   // Get tasks for a specific column
   const getTasksForColumn = (status: Task['status']) => {
@@ -317,52 +277,45 @@ const KanbanBoard: React.FC = () => {
     try {
       setDragDisabled(true);
 
-      // Update task status locally
+      // Optimistically update task status locally
       setTasks(prevTasks => 
         prevTasks.map(task => 
-          task.id === taskId 
-            ? { ...task, status: newStatus, updatedDate: new Date().toISOString() }
+          task.taskId === taskId 
+            ? { ...task, status: newStatus, updatedAt: new Date().toISOString() }
             : task
         )
       );
 
-      // TODO: Update task in DynamoDB in production
-      // const dynamoClient = new DynamoDBClient({ region: 'us-east-1' });
-      // const updateCommand = new UpdateItemCommand({
-      //   TableName: 'TaskFlow-Tasks',
-      //   Key: { id: { S: taskId } },
-      //   UpdateExpression: 'SET #status = :status, updatedDate = :updatedDate',
-      //   ExpressionAttributeNames: { '#status': 'status' },
-      //   ExpressionAttributeValues: {
-      //     ':status': { S: newStatus },
-      //     ':updatedDate': { S: new Date().toISOString() }
-      //   }
-      // });
-      // await dynamoClient.send(updateCommand);
-
-      // TODO: Send notification via SNS in production
-      // const snsClient = new SNSClient({ region: 'us-east-1' });
-      // const publishCommand = new PublishCommand({
-      //   TopicArn: 'arn:aws:sns:us-east-1:ACCOUNT:task-updates',
-      //   Message: JSON.stringify({
-      //     taskId,
-      //     newStatus,
-      //     updatedBy: user?.id,
-      //     timestamp: new Date().toISOString()
-      //   }),
-      //   Subject: 'Task Status Updated'
-      // });
-      // await snsClient.send(publishCommand);
+      // Update task status via API
+      const updatedTask = await TaskService.updateTaskStatus(taskId, newStatus);
+      
+      // Sync with API response
+      setTasks(prevTasks => 
+        prevTasks.map(task => 
+          task.taskId === taskId ? updatedTask : task
+        )
+      );
 
       showSuccess(`Task moved to ${targetColumn?.title}`);
     } catch (error) {
       console.error('Error updating task status:', error);
-      showError('Failed to update task status');
+      
+      // Revert optimistic update on error
+      const originalTask = tasks.find(t => t.taskId === taskId);
+      if (originalTask) {
+        setTasks(prevTasks => 
+          prevTasks.map(task => 
+            task.taskId === taskId ? originalTask : task
+          )
+        );
+      }
+      
+      showError(`Failed to update task status: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
       // Revert changes on error
       setTasks(prevTasks => 
         prevTasks.map(task => 
-          task.id === taskId 
+          task.taskId === taskId 
             ? { ...task, status: source.droppableId as Task['status'] }
             : task
         )
@@ -372,15 +325,12 @@ const KanbanBoard: React.FC = () => {
     }
   };
 
-  // Priority color mapping
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical': return 'error';
-      case 'high': return 'warning';
-      case 'medium': return 'info';
-      case 'low': return 'success';
-      default: return 'default';
-    }
+  // Complexity color mapping
+  const getComplexityColor = (complexity: number) => {
+    if (complexity >= 4) return 'error'; // High complexity (4-5)
+    if (complexity === 3) return 'warning'; // Medium complexity (3)
+    if (complexity <= 2) return 'success'; // Low complexity (1-2)
+    return 'default';
   };
 
   // Create or update task
@@ -391,34 +341,36 @@ const KanbanBoard: React.FC = () => {
         return;
       }
 
-      const now = new Date().toISOString();
-      const taskData: Task = {
-        id: editingTask?.id || Date.now().toString(),
-        ...formData,
-        assigneeName: teamMembers.find(m => m.id === formData.assigneeId)?.name || 'Unassigned',
-        status: editingTask?.status || 'todo',
-        createdDate: editingTask?.createdDate || now,
-        updatedDate: now,
-        actualHours: editingTask?.actualHours || 0,
-        attachments: editingTask?.attachments || 0,
+      const taskRequestData = {
+        title: formData.title,
+        description: formData.description,
+        assignedBy: 'user-manager-12345', // TODO: Get from auth context
+        assignedTo: formData.assignedTo || undefined,
+        status: formData.status,
+        dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : new Date().toISOString(),
+        Task_Complexity: formData.Task_Complexity,
+        Required_Skills: formData.Required_Skills,
+        attachments: editingTask?.attachments || [],
       };
 
+      let updatedTask: Task;
+
       if (editingTask) {
-        // TODO: Update in DynamoDB in production
-        // const updateCommand = new UpdateItemCommand({ ... });
-        setTasks(prev => prev.map(task => task.id === editingTask.id ? taskData : task));
+        // Update existing task via API
+        updatedTask = await TaskService.updateTask(editingTask.taskId, taskRequestData);
+        setTasks(prev => prev.map(task => task.taskId === editingTask.taskId ? updatedTask : task));
         showSuccess('Task updated successfully');
       } else {
-        // TODO: Create in DynamoDB in production
-        // const putCommand = new PutItemCommand({ ... });
-        setTasks(prev => [...prev, taskData]);
+        // Create new task via API
+        updatedTask = await TaskService.createTask(taskRequestData);
+        setTasks(prev => [...prev, updatedTask]);
         showSuccess('Task created successfully');
       }
 
       handleCloseDialog();
     } catch (error) {
       console.error('Error saving task:', error);
-      showError('Failed to save task');
+      showError(`Failed to ${editingTask ? 'update' : 'create'} task: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -427,7 +379,7 @@ const KanbanBoard: React.FC = () => {
     try {
       // TODO: Delete from DynamoDB in production
       // const deleteCommand = new DeleteItemCommand({ ... });
-      setTasks(prev => prev.filter(t => t.id !== task.id));
+      setTasks(prev => prev.filter(t => t.taskId !== task.taskId));
       showSuccess('Task deleted successfully');
       setDeleteConfirmOpen(false);
       setTaskToDelete(null);
@@ -444,26 +396,22 @@ const KanbanBoard: React.FC = () => {
       setFormData({
         title: task.title,
         description: task.description,
-        assigneeId: task.assigneeId,
-        priority: task.priority,
-        dueDate: task.dueDate,
-        tags: task.tags,
-        estimatedHours: task.estimatedHours || 0,
-        department: task.department,
-        category: task.category,
+        assignedTo: task.assignedTo || '',
+        status: task.status,
+        dueDate: task.dueDate.split('T')[0], // Extract date part
+        Task_Complexity: task.Task_Complexity,
+        Required_Skills: task.Required_Skills,
       });
     } else {
       setEditingTask(null);
       setFormData({
         title: '',
         description: '',
-        assigneeId: '',
-        priority: 'medium',
+        assignedTo: '',
+        status: 'pending',
         dueDate: '',
-        tags: [],
-        estimatedHours: 0,
-        department: '',
-        category: '',
+        Task_Complexity: 1,
+        Required_Skills: [],
       });
     }
     setOpenDialog(true);
@@ -500,8 +448,8 @@ const KanbanBoard: React.FC = () => {
 
       // Update attachment count
       setTasks(prev => prev.map(task => 
-        task.id === taskId 
-          ? { ...task, attachments: task.attachments + 1 }
+        task.taskId === taskId 
+          ? { ...task, attachments: [...(task.attachments || []), `https://s3.amazonaws.com/taskflow-attachments/${taskId}/${file.name}`] }
           : task
       ));
 
@@ -612,9 +560,9 @@ const KanbanBoard: React.FC = () => {
                         }}
                       >
                         {columnTasks.map((task, index) => (
-                          <Draggable 
-                            key={task.id} 
-                            draggableId={task.id} 
+                          <Draggable
+                            key={task.taskId}
+                            draggableId={task.taskId}
                             index={index}
                             isDragDisabled={dragDisabled}
                           >
@@ -667,19 +615,19 @@ const KanbanBoard: React.FC = () => {
                                     {task.description}
                                   </Typography>
 
-                                  {/* Tags */}
-                                  <Stack direction="row" spacing={0.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.5 }}>
-                                    {task.tags.slice(0, 2).map((tag) => (
+                                  {/* Required Skills */}
+                                  <Stack direction="row" spacing={0.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.5 }}>  
+                                    {task.Required_Skills.slice(0, 2).map((skill) => (
                                       <Chip
-                                        key={tag}
-                                        label={tag}
+                                        key={skill}
+                                        label={skill}
                                         size="small"
                                         sx={{ fontSize: '0.7rem', height: 20 }}
                                       />
                                     ))}
-                                    {task.tags.length > 2 && (
+                                    {task.Required_Skills.length > 2 && (
                                       <Chip
-                                        label={`+${task.tags.length - 2}`}
+                                        label={`+${task.Required_Skills.length - 2}`}
                                         size="small"
                                         variant="outlined"
                                         sx={{ fontSize: '0.7rem', height: 20 }}
@@ -691,23 +639,23 @@ const KanbanBoard: React.FC = () => {
                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                       <Chip
-                                        label={task.priority.toUpperCase()}
-                                        color={getPriorityColor(task.priority) as any}
+                                        label={`Level ${task.Task_Complexity}`}
+                                        color={getComplexityColor(task.Task_Complexity) as any}
                                         size="small"
                                         icon={<FlagIcon />}
                                       />
-                                      {task.attachments > 0 && (
+                                      {task.attachments && task.attachments.length > 0 && (
                                         <Chip
-                                          label={task.attachments}
+                                          label={task.attachments.length}
                                           size="small"
                                           icon={<CloudUploadIcon />}
                                           variant="outlined"
                                         />
                                       )}
                                     </Box>
-                                    <Tooltip title={task.assigneeName}>
+                                    <Tooltip title={task.assignedTo ? teamMembers.find(m => m.id === task.assignedTo)?.name || 'Unknown' : 'Unassigned'}>
                                       <Avatar sx={{ width: 24, height: 24 }}>
-                                        {task.assigneeName.charAt(0)}
+                                        {task.assignedTo ? (teamMembers.find(m => m.id === task.assignedTo)?.name?.charAt(0) || 'U') : '?'}
                                       </Avatar>
                                     </Tooltip>
                                   </Box>
@@ -720,24 +668,12 @@ const KanbanBoard: React.FC = () => {
                                     </Typography>
                                   </Box>
 
-                                  {/* Progress Bar */}
-                                  {task.estimatedHours && (
-                                    <Box sx={{ mt: 1 }}>
-                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                                        <Typography variant="caption">
-                                          Progress
-                                        </Typography>
-                                        <Typography variant="caption">
-                                          {task.actualHours || 0}h / {task.estimatedHours}h
-                                        </Typography>
-                                      </Box>
-                                      <LinearProgress
-                                        variant="determinate"
-                                        value={((task.actualHours || 0) / task.estimatedHours) * 100}
-                                        sx={{ height: 4, borderRadius: 2 }}
-                                      />
-                                    </Box>
-                                  )}
+                                  {/* Task Info */}
+                                  <Box sx={{ mt: 1 }}>
+                                    <Typography variant="caption" color="textSecondary">
+                                      Created: {new Date(task.createdAt).toLocaleDateString()}
+                                    </Typography>
+                                  </Box>
                                 </CardContent>
                               </Card>
                             )}
@@ -793,7 +729,7 @@ const KanbanBoard: React.FC = () => {
               const files = (e.target as HTMLInputElement).files;
               if (files) {
                 Array.from(files).forEach(file => {
-                  handleFileUpload(file, selectedTask.id);
+                  handleFileUpload(file, selectedTask.taskId);
                 });
               }
             };
@@ -848,8 +784,8 @@ const KanbanBoard: React.FC = () => {
               <FormControl fullWidth>
                 <InputLabel>Assignee</InputLabel>
                 <Select
-                  value={formData.assigneeId}
-                  onChange={(e) => setFormData(prev => ({ ...prev, assigneeId: e.target.value }))}
+                  value={formData.assignedTo}
+                  onChange={(e) => setFormData(prev => ({ ...prev, assignedTo: e.target.value }))}
                   label="Assignee"
                 >
                   {teamMembers.map((member) => (
@@ -867,11 +803,11 @@ const KanbanBoard: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
-                <InputLabel>Priority</InputLabel>
+                <InputLabel>Task Complexity</InputLabel>
                 <Select
-                  value={formData.priority}
-                  onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value as any }))}
-                  label="Priority"
+                  value={formData.Task_Complexity}
+                  onChange={(e) => setFormData(prev => ({ ...prev, Task_Complexity: e.target.value as any }))}
+                  label="Task Complexity"
                 >
                   <MenuItem value="low">Low</MenuItem>
                   <MenuItem value="medium">Medium</MenuItem>
@@ -890,41 +826,19 @@ const KanbanBoard: React.FC = () => {
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Estimated Hours"
-                type="number"
-                value={formData.estimatedHours}
-                onChange={(e) => setFormData(prev => ({ ...prev, estimatedHours: Number(e.target.value) }))}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Department"
-                value={formData.department}
-                onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Category"
-                value={formData.category}
-                onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
-              />
-            </Grid>
+
+
+
             <Grid item xs={12}>
               <TextField
                 fullWidth
-                label="Tags (comma separated)"
-                value={formData.tags.join(', ')}
+                label="Required Skills (comma separated)"
+                value={formData.Required_Skills.join(', ')}
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
-                  tags: e.target.value.split(',').map(tag => tag.trim()).filter(Boolean)
+                  Required_Skills: e.target.value.split(',').map(skill => skill.trim()).filter(Boolean)
                 }))}
-                placeholder="frontend, urgent, bug"
+                placeholder="React, TypeScript, AWS"
               />
             </Grid>
           </Grid>
