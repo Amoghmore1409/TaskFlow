@@ -27,6 +27,20 @@ interface UpdateTaskRequest extends Partial<CreateTaskRequest> {
 }
 
 export class TaskService {
+  // Normalize task data to ensure Required_Skills is always an array
+  private static normalizeTask(task: any): Task {
+    return {
+      ...task,
+      Required_Skills: Array.isArray(task.Required_Skills) 
+        ? task.Required_Skills 
+        : (typeof task.Required_Skills === 'string' 
+          ? task.Required_Skills.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : []
+        ),
+      attachments: Array.isArray(task.attachments) ? task.attachments : []
+    };
+  }
+
   private static async makeRequest<T>(
     endpoint: string,
     options: RequestInit = {},
@@ -121,7 +135,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
         
         if (directResponse.ok) {
           const data = await directResponse.json();
-          return data;
+          return this.normalizeTask(data);
         }
         throw new Error(`Direct API call failed: ${directResponse.status} ${directResponse.statusText}`);
       } catch (corsError) {
@@ -140,7 +154,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
           if (proxyResponse.ok) {
             const result = await proxyResponse.json();
             console.log('Task created via CORS proxy:', result);
-            return result;
+            return this.normalizeTask(result);
           }
           throw new Error(`Proxy request failed: ${proxyResponse.status}`);
         } catch (proxyError) {
@@ -156,7 +170,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
           };
           
           console.log('✅ Mock task created for development:', mockTask);
-          return mockTask;
+          return this.normalizeTask(mockTask);
         }
       }
     }
@@ -167,7 +181,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
       body: JSON.stringify(taskData),
     });
 
-    return response;
+    return this.normalizeTask(response);
   }
 
   // Get all tasks
@@ -180,7 +194,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
         if (response.ok) {
           const data = await response.json();
           const tasks = data.tasks || (Array.isArray(data) ? data : []);
-          return Array.isArray(tasks) ? tasks : [];
+          return Array.isArray(tasks) ? tasks.map(task => this.normalizeTask(task)) : [];
         }
         throw new Error('Direct API call failed');
       } catch (corsError) {
@@ -193,7 +207,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
             const proxyData = await response.json();
             const actualData = JSON.parse(proxyData.contents);
             const tasks = actualData.tasks || (Array.isArray(actualData) ? actualData : []);
-            return Array.isArray(tasks) ? tasks : [];
+            return Array.isArray(tasks) ? tasks.map(task => this.normalizeTask(task)) : [];
           }
           throw new Error('Proxy call failed');
         } catch (proxyError) {
@@ -207,7 +221,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
       method: 'GET',
     });
 
-    return Array.isArray(response.tasks) ? response.tasks : [];
+    return Array.isArray(response.tasks) ? response.tasks.map(task => this.normalizeTask(task)) : [];
   }
 
   // Get a specific task by ID
@@ -216,7 +230,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
       method: 'GET',
     }, false);
 
-    return response;
+    return this.normalizeTask(response);
   }
 
   // Update an existing task
@@ -237,7 +251,7 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
       body: JSON.stringify(updateData),
     }, false);
 
-    return response;
+    return this.normalizeTask(response);
   }
 
   // Delete a task
@@ -280,6 +294,6 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
       }),
     }, false);
 
-    return response;
+    return this.normalizeTask(response);
   }
 }

@@ -41,6 +41,7 @@ import {
   Visibility as ViewIcon,
   Schedule as ScheduleIcon,
   CheckCircle as CompleteIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
 import { useNotification } from '../../context';
@@ -183,6 +184,22 @@ const KanbanBoard: React.FC = () => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [dragDisabled, setDragDisabled] = useState(false);
+  
+  // WIP Limits state with localStorage persistence
+  const [wipLimits, setWipLimits] = useState<Record<string, number>>(() => {
+    const saved = localStorage.getItem('taskflow-wip-limits');
+    return saved ? JSON.parse(saved) : {
+      'pending': 0, // No limit for pending
+      'in-progress': 5, // Default WIP limit for in-progress
+      'completed': 0, // No limit for completed
+    };
+  });
+  const [showWipSettings, setShowWipSettings] = useState(false);
+
+  // Save WIP limits to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('taskflow-wip-limits', JSON.stringify(wipLimits));
+  }, [wipLimits]);
 
   // Form state
   const [formData, setFormData] = useState<TaskFormData>({
@@ -195,7 +212,7 @@ const KanbanBoard: React.FC = () => {
     Required_Skills: [],
   });
 
-  // Define Kanban columns
+  // Define Kanban columns with dynamic WIP limits
   const columns: Column[] = [
     {
       id: 'pending',
@@ -203,6 +220,7 @@ const KanbanBoard: React.FC = () => {
       status: 'pending',
       color: '#f5f5f5',
       icon: <AssignmentIcon />,
+      maxItems: wipLimits['pending'] || undefined,
     },
     {
       id: 'in-progress',
@@ -210,7 +228,7 @@ const KanbanBoard: React.FC = () => {
       status: 'in-progress',
       color: '#e3f2fd',
       icon: <ScheduleIcon />,
-      maxItems: 3, // WIP limit
+      maxItems: wipLimits['in-progress'] || undefined,
     },
     {
       id: 'completed',
@@ -218,6 +236,7 @@ const KanbanBoard: React.FC = () => {
       status: 'completed',
       color: '#e8f5e8',
       icon: <CompleteIcon />,
+      maxItems: wipLimits['completed'] || undefined,
     },
   ];
 
@@ -266,10 +285,10 @@ const KanbanBoard: React.FC = () => {
 
     // Check WIP limits
     const targetColumn = columns.find(col => col.id === destination.droppableId);
-    if (targetColumn?.maxItems) {
+    if (targetColumn?.maxItems && targetColumn.maxItems > 0) {
       const currentTasksInColumn = getTasksForColumn(newStatus).length;
       if (currentTasksInColumn >= targetColumn.maxItems && source.droppableId !== destination.droppableId) {
-        showError(`Maximum ${targetColumn.maxItems} tasks allowed in ${targetColumn.title}`);
+        showError(`WIP limit exceeded! ${targetColumn.title} can only have ${targetColumn.maxItems} tasks. Currently has ${currentTasksInColumn}.`);
         return;
       }
     }
@@ -400,7 +419,7 @@ const KanbanBoard: React.FC = () => {
         status: task.status,
         dueDate: task.dueDate.split('T')[0], // Extract date part
         Task_Complexity: task.Task_Complexity,
-        Required_Skills: task.Required_Skills,
+        Required_Skills: Array.isArray(task.Required_Skills) ? task.Required_Skills : [],
       });
     } else {
       setEditingTask(null);
@@ -467,14 +486,24 @@ const KanbanBoard: React.FC = () => {
         <Typography variant="h4" component="h1">
           Kanban Board
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => handleOpenDialog()}
-          sx={{ borderRadius: 2 }}
-        >
-          Add Task
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={() => setShowWipSettings(true)}
+            sx={{ borderRadius: 2 }}
+          >
+            WIP Settings
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => handleOpenDialog()}
+            sx={{ borderRadius: 2 }}
+          >
+            Add Task
+          </Button>
+        </Box>
       </Box>
 
       {/* Statistics */}
@@ -496,10 +525,18 @@ const KanbanBoard: React.FC = () => {
                       <Box />
                     </Badge>
                   </Box>
-                  {column.maxItems && (
-                    <Typography variant="caption" color="textSecondary">
-                      WIP Limit: {columnTasks.length}/{column.maxItems}
-                    </Typography>
+                  {column.maxItems && column.maxItems > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="caption" color="textSecondary">
+                        WIP Limit: {columnTasks.length}/{column.maxItems}
+                      </Typography>
+                      <LinearProgress 
+                        variant="determinate" 
+                        value={(columnTasks.length / column.maxItems) * 100}
+                        color={columnTasks.length >= column.maxItems ? "error" : "primary"}
+                        sx={{ mt: 0.5, height: 4, borderRadius: 2 }}
+                      />
+                    </Box>
                   )}
                 </CardContent>
               </Card>
@@ -513,6 +550,9 @@ const KanbanBoard: React.FC = () => {
         <Grid container spacing={2} sx={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
           {columns.map((column) => {
             const columnTasks = getTasksForColumn(column.status);
+            const isAtLimit = Boolean(column.maxItems && column.maxItems > 0 && columnTasks.length >= column.maxItems);
+            const isNearLimit = Boolean(column.maxItems && column.maxItems > 0 && columnTasks.length >= column.maxItems * 0.8);
+            
             return (
               <Grid item xs={12} sm={6} md={3} key={column.id}>
                 <Paper 
@@ -521,7 +561,8 @@ const KanbanBoard: React.FC = () => {
                     display: 'flex', 
                     flexDirection: 'column',
                     backgroundColor: column.color,
-                    border: '2px solid #e0e0e0',
+                    border: isAtLimit ? '2px solid #f44336' : isNearLimit ? '2px solid #ff9800' : '2px solid #e0e0e0',
+                    boxShadow: isAtLimit ? '0 0 10px rgba(244, 67, 54, 0.3)' : 'none',
                   }}
                 >
                   {/* Column Header */}
@@ -546,19 +587,46 @@ const KanbanBoard: React.FC = () => {
                   </Box>
 
                   {/* Droppable Area */}
-                  <Droppable droppableId={column.id} isDropDisabled={dragDisabled}>
-                    {(provided, snapshot) => (
-                      <Box
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        sx={{
-                          flexGrow: 1,
-                          p: 1,
-                          minHeight: 200,
-                          backgroundColor: snapshot.isDraggingOver ? '#f0f0f0' : 'transparent',
-                          overflowY: 'auto',
-                        }}
-                      >
+                  <Droppable droppableId={column.id} isDropDisabled={Boolean(dragDisabled || isAtLimit)}>
+                    {(provided, snapshot) => {
+                      const canDrop = !isAtLimit || snapshot.isDraggingOver;
+                      return (
+                        <Box
+                          ref={provided.innerRef}
+                          {...provided.droppableProps}
+                          sx={{
+                            flexGrow: 1,
+                            p: 1,
+                            minHeight: 200,
+                            backgroundColor: snapshot.isDraggingOver 
+                              ? (isAtLimit ? '#ffebee' : '#f0f0f0') 
+                              : 'transparent',
+                            border: snapshot.isDraggingOver && isAtLimit ? '2px dashed #f44336' : 'none',
+                            overflowY: 'auto',
+                            position: 'relative',
+                          }}
+                        >
+                          {isAtLimit && !canDrop && (
+                            <Box
+                              sx={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                zIndex: 1,
+                                pointerEvents: 'none',
+                              }}
+                            >
+                              <Typography variant="caption" color="error" sx={{ fontWeight: 'bold' }}>
+                                WIP Limit Reached
+                              </Typography>
+                            </Box>
+                          )}
                         {columnTasks.map((task, index) => (
                           <Draggable
                             key={task.taskId}
@@ -617,7 +685,7 @@ const KanbanBoard: React.FC = () => {
 
                                   {/* Required Skills */}
                                   <Stack direction="row" spacing={0.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.5 }}>  
-                                    {task.Required_Skills.slice(0, 2).map((skill) => (
+                                    {(Array.isArray(task.Required_Skills) ? task.Required_Skills : []).slice(0, 2).map((skill) => (
                                       <Chip
                                         key={skill}
                                         label={skill}
@@ -625,7 +693,7 @@ const KanbanBoard: React.FC = () => {
                                         sx={{ fontSize: '0.7rem', height: 20 }}
                                       />
                                     ))}
-                                    {task.Required_Skills.length > 2 && (
+                                    {Array.isArray(task.Required_Skills) && task.Required_Skills.length > 2 && (
                                       <Chip
                                         label={`+${task.Required_Skills.length - 2}`}
                                         size="small"
@@ -696,8 +764,10 @@ const KanbanBoard: React.FC = () => {
                         >
                           Add Task
                         </Button>
+                        {provided.placeholder}
                       </Box>
-                    )}
+                      );
+                    }}
                   </Droppable>
                 </Paper>
               </Grid>
@@ -833,7 +903,7 @@ const KanbanBoard: React.FC = () => {
               <TextField
                 fullWidth
                 label="Required Skills (comma separated)"
-                value={formData.Required_Skills.join(', ')}
+                value={Array.isArray(formData.Required_Skills) ? formData.Required_Skills.join(', ') : ''}
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
                   Required_Skills: e.target.value.split(',').map(skill => skill.trim()).filter(Boolean)
@@ -871,10 +941,104 @@ const KanbanBoard: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* WIP Settings Dialog */}
+      <Dialog open={showWipSettings} onClose={() => setShowWipSettings(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          WIP Limit Settings
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            Configure Work In Progress limits for each column. Set to 0 for no limit.
+          </Typography>
+          
+          {/* Quick Stats */}
+          <Box sx={{ mb: 3, p: 2, backgroundColor: 'grey.50', borderRadius: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Current Status:</Typography>
+            {columns.map((column) => {
+              const count = getTasksForColumn(column.status).length;
+              const limit = wipLimits[column.status];
+              const isAtLimit = limit > 0 && count >= limit;
+              const isNearLimit = limit > 0 && count >= limit * 0.8;
+              
+              return (
+                <Typography 
+                  key={column.id} 
+                  variant="caption" 
+                  display="block"
+                  color={isAtLimit ? 'error' : isNearLimit ? 'warning.main' : 'text.secondary'}
+                >
+                  {column.title}: {count} tasks {limit > 0 ? `(limit: ${limit})` : '(no limit)'}
+                  {isAtLimit && ' ⚠️ At limit!'}
+                  {isNearLimit && !isAtLimit && ' ⚡ Near limit'}
+                </Typography>
+              );
+            })}
+          </Box>
+
+          <Grid container spacing={3}>
+            {columns.map((column) => (
+              <Grid item xs={12} key={column.id}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 120 }}>
+                    {column.icon}
+                    <Typography variant="body1" sx={{ ml: 1 }}>
+                      {column.title}
+                    </Typography>
+                  </Box>
+                  <TextField
+                    type="number"
+                    label="WIP Limit"
+                    value={wipLimits[column.status] || 0}
+                    onChange={(e) => setWipLimits(prev => ({
+                      ...prev,
+                      [column.status]: Math.max(0, parseInt(e.target.value) || 0)
+                    }))}
+                    inputProps={{ min: 0, max: 50 }}
+                    size="small"
+                    sx={{ width: 120 }}
+                    helperText={wipLimits[column.status] === 0 ? "No limit" : ""}
+                  />
+                  <Typography variant="caption" color="textSecondary">
+                    Current: {getTasksForColumn(column.status).length}
+                  </Typography>
+                </Box>
+              </Grid>
+            ))}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setWipLimits({
+                'pending': 0,
+                'in-progress': 5,
+                'completed': 0,
+              });
+            }}
+            color="secondary"
+          >
+            Reset to Defaults
+          </Button>
+          <Box sx={{ flexGrow: 1 }} />
+          <Button onClick={() => setShowWipSettings(false)}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => {
+              setShowWipSettings(false);
+              showSuccess('WIP limits updated successfully');
+            }} 
+            variant="contained"
+          >
+            Apply Changes
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* WIP Limit Warning */}
       {columns.some(col => {
         const count = getTasksForColumn(col.status).length;
-        return col.maxItems && count >= col.maxItems;
+        return col.maxItems && col.maxItems > 0 && count >= col.maxItems;
       }) && (
         <Alert 
           severity="warning" 
@@ -885,8 +1049,19 @@ const KanbanBoard: React.FC = () => {
             minWidth: 300,
             zIndex: 1000,
           }}
+          action={
+            <Button 
+              color="inherit" 
+              size="small" 
+              onClick={() => setShowWipSettings(true)}
+            >
+              Adjust
+            </Button>
+          }
         >
-          WIP limit reached in one or more columns!
+          <Typography variant="body2">
+            WIP limit reached! Consider adjusting limits or moving tasks to balance workflow.
+          </Typography>
         </Alert>
       )}
     </Box>

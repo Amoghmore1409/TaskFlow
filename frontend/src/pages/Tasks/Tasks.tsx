@@ -409,7 +409,7 @@ const Tasks: React.FC = () => {
         status: task.status || 'pending',
         dueDate: (task.dueDate || new Date().toISOString()).split('T')[0], // Extract date part for input field
         Task_Complexity: task.Task_Complexity || 1,
-        Required_Skills: task.Required_Skills || [],
+        Required_Skills: Array.isArray(task.Required_Skills) ? task.Required_Skills : [],
       });
     } else {
       setEditingTask(null);
@@ -872,7 +872,7 @@ const Tasks: React.FC = () => {
               <TextField
                 fullWidth
                 label="Required Skills (comma separated)"
-                value={formData.Required_Skills.join(', ')}
+                value={Array.isArray(formData.Required_Skills) ? formData.Required_Skills.join(', ') : ''}
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
                   Required_Skills: e.target.value.split(',').map(skill => skill.trim()).filter(Boolean)

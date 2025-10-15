@@ -189,23 +189,54 @@ const Dashboard: React.FC = () => {
       console.log('Processed users array:', users);
       console.log('Users length:', users.length);
       
+      // Map team IDs to department names
+      const teamToDepartment: Record<string, string> = {
+        'team-engineering': 'Engineering',
+        'team-marketing': 'Marketing',
+        'team-finance': 'Finance',
+        'team-design': 'Design',
+        'team-hr': 'HR',
+        'team-product': 'Product',
+        'team-sales': 'Sales',
+        'team-operations': 'Operations',
+      };
+      
       let usersByDept = users.reduce((acc: any, user: any) => {
-        const dept = user.department || 'Unknown';
+        // Use teamId to determine department, fallback to role-based mapping
+        let dept = 'Unknown';
+        
+        if (user.teamId && teamToDepartment[user.teamId]) {
+          dept = teamToDepartment[user.teamId];
+        } else if (user.department) {
+          dept = user.department;
+        } else if (user.role) {
+          // Fallback: try to infer department from role
+          const role = user.role.toLowerCase();
+          if (role.includes('engineer') || role.includes('developer') || role.includes('devops')) {
+            dept = 'Engineering';
+          } else if (role.includes('market')) {
+            dept = 'Marketing';
+          } else if (role.includes('design') || role.includes('ux') || role.includes('ui')) {
+            dept = 'Design';
+          } else if (role.includes('finance') || role.includes('financial')) {
+            dept = 'Finance';
+          } else if (role.includes('hr') || role.includes('human')) {
+            dept = 'HR';
+          } else if (role.includes('product')) {
+            dept = 'Product';
+          } else if (role.includes('sales')) {
+            dept = 'Sales';
+          }
+        }
+        
         acc[dept] = (acc[dept] || 0) + 1;
         return acc;
       }, {});
 
-      // If no users or empty departments, add mock data for demonstration
+      // If no users found, log it but don't add mock data since we should have real data
       if (Object.keys(usersByDept).length === 0) {
-        console.log('No user department data found, using fallback data');
-        usersByDept = {
-          'Engineering': 15,
-          'Design': 8,
-          'Marketing': 6,
-          'HR': 4,
-          'Sales': 7,
-          'Operations': 5,
-        };
+        console.log('No user department data found - this might indicate a data loading issue');
+        console.log('Users array:', users);
       }
 
       console.log('Users by department:', usersByDept);
@@ -289,6 +320,7 @@ const Dashboard: React.FC = () => {
       }));
 
       console.log('Processed users by department for chart:', processedUsersByDept);
+      console.log('Sample user for debugging:', users[0]);
 
       setDashboardData({
         totalUsers: users.length,
@@ -450,8 +482,14 @@ const Dashboard: React.FC = () => {
                     />
                     <YAxis />
                     <Tooltip 
-                      formatter={(value, name) => [value, 'Users']}
-                      labelFormatter={(label) => `Department: ${label}`}
+                      formatter={(value, name, props) => {
+                        console.log('Tooltip formatter:', { value, name, props });
+                        return [value, 'Users'];
+                      }}
+                      labelFormatter={(label) => {
+                        console.log('Tooltip label formatter:', label);
+                        return `Department: ${label}`;
+                      }}
                     />
                     <Bar 
                       dataKey="count" 
