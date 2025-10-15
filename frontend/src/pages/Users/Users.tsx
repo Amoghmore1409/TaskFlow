@@ -48,6 +48,7 @@ import {
   Add,
   Visibility,
   Clear,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 
 import { UserService, User } from '../../services/userService';
@@ -60,7 +61,7 @@ const Users: React.FC = () => {
   const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [teamFilter, setTeamFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -73,26 +74,47 @@ const Users: React.FC = () => {
   const showSuccess = useCallback((message: string) => showNotification(message, 'success'), [showNotification]);
   const showError = useCallback((message: string) => showNotification(message, 'error'), [showNotification]);
 
-  // Load users data
-  useEffect(() => {
-    const loadUsers = async () => {
-      try {
-        setLoading(true);
-        console.log('🔄 Loading users...');
-        const usersData = await UserService.getAllUsers();
-        console.log('✅ Users loaded:', usersData.length, 'users');
-        setUsers(usersData);
-        setFilteredUsers(usersData);
-      } catch (error) {
-        console.error('💥 Error loading users:', error);
-        showError('Failed to load users: ' + (error instanceof Error ? error.message : 'Unknown error'));
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Load users function (extracted for reuse)
+  const loadUsers = useCallback(async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Loading users...');
+      
+      // Set a timeout for the API call
+      const timeoutPromise = new Promise<User[]>((_, reject) => 
+        setTimeout(() => reject(new Error('Loading timeout')), 10000)
+      );
+      
+      const apiPromise = UserService.getAllUsers();
+      
+      // Race between API call and timeout
+      const usersData = await Promise.race([apiPromise, timeoutPromise]);
+      
+      console.log('✅ Users loaded:', usersData.length, 'users');
+      console.log('📋 Users data:', usersData);
+      
+      setUsers(usersData);
+      setFilteredUsers(usersData);
+      
+      // Show simple success message
+      showSuccess(`Successfully loaded ${usersData.length} users`);
+    } catch (error) {
+      console.error('💥 Error loading users:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      showError('Failed to load users: ' + errorMessage);
+      
+      // Set empty array but don't prevent the component from rendering
+      setUsers([]);
+      setFilteredUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [showError, showSuccess]);
 
+  // Load users data on component mount
+  useEffect(() => {
     loadUsers();
-  }, [showError]);
+  }, [loadUsers]);
 
   // Filter users based on search and filters
   useEffect(() => {
@@ -101,31 +123,30 @@ const Users: React.FC = () => {
     // Search filter
     if (searchTerm) {
       filtered = filtered.filter(user =>
-        user.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.position.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        user.skills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
+        user.role.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.Employee_Skills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
-    // Department filter
-    if (departmentFilter !== 'all') {
-      filtered = filtered.filter(user => user.department === departmentFilter);
+    // Team filter
+    if (teamFilter !== 'all') {
+      filtered = filtered.filter(user => user.teamId === teamFilter);
     }
 
     // Status filter
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(user => user.status === statusFilter);
+      const isActiveFilter = statusFilter === 'active';
+      filtered = filtered.filter(user => user.isActive === isActiveFilter);
     }
 
     setFilteredUsers(filtered);
-  }, [users, searchTerm, departmentFilter, statusFilter]);
+  }, [users, searchTerm, teamFilter, statusFilter]);
 
-  // Get unique departments for filter
-  const departments = useMemo(() => {
-    return Array.from(new Set(users.map(user => user.department))).sort();
+  // Get unique teams for filter
+  const teams = useMemo(() => {
+    return Array.from(new Set(users.map(user => user.teamId))).sort();
   }, [users]);
 
   // Status colors
@@ -152,10 +173,10 @@ const Users: React.FC = () => {
   };
 
   const handleDeleteUser = async (user: User) => {
-    if (window.confirm(`Are you sure you want to delete ${user.employeeName}?`)) {
+    if (window.confirm(`Are you sure you want to delete ${user.name}?`)) {
       try {
-        await UserService.deleteUser(user.userId);
-        setUsers(prev => prev.filter(u => u.userId !== user.userId));
+        await UserService.deleteUser(user.user_ID);
+        setUsers(prev => prev.filter(u => u.user_ID !== user.user_ID));
         showSuccess('User deleted successfully');
       } catch (error) {
         showError('Failed to delete user: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -171,7 +192,7 @@ const Users: React.FC = () => {
 
   const clearFilters = () => {
     setSearchTerm('');
-    setDepartmentFilter('all');
+    setTeamFilter('all');
     setStatusFilter('all');
   };
 
@@ -195,22 +216,18 @@ const Users: React.FC = () => {
       <CardContent sx={{ flex: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
           <Avatar sx={{ width: 60, height: 60, mr: 2, bgcolor: 'primary.main' }}>
-            {user.avatar ? (
-              <img src={user.avatar} alt={user.employeeName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              user.employeeName.split(' ').map(n => n[0]).join('')
-            )}
+            {user.name.split(' ').map(n => n[0]).join('')}
           </Avatar>
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }}>
-              {user.employeeName}
+              {user.name}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              ID: {user.employeeId}
+              ID: {user.user_ID}
             </Typography>
             <Badge 
-              badgeContent={user.status.toUpperCase()} 
-              color={getStatusColor(user.status) as any}
+              badgeContent={user.isActive ? 'ACTIVE' : 'INACTIVE'} 
+              color={user.isActive ? 'success' : 'error'}
               sx={{ mt: 0.5 }}
             />
           </Box>
@@ -221,15 +238,15 @@ const Users: React.FC = () => {
         <Box sx={{ mb: 2 }}>
           <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
             <Work sx={{ mr: 1, fontSize: 16 }} />
-            {user.position}
+            {user.role}
           </Typography>
           <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
             <Business sx={{ mr: 1, fontSize: 16 }} />
-            {user.department}
+            {user.teamId.replace('team-', '').charAt(0).toUpperCase() + user.teamId.replace('team-', '').slice(1)}
           </Typography>
           <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
             <Star sx={{ mr: 1, fontSize: 16 }} />
-            {formatExperience(user.yearsOfExperience)} experience
+            {formatExperience(user.Years_of_Experience)} experience
           </Typography>
           <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center' }}>
             <Email sx={{ mr: 1, fontSize: 16 }} />
@@ -242,11 +259,11 @@ const Users: React.FC = () => {
             Skills:
           </Typography>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-            {user.skills.slice(0, 3).map((skill, index) => (
+            {user.Employee_Skills.slice(0, 3).map((skill, index) => (
               <Chip key={index} label={skill} size="small" variant="outlined" />
             ))}
-            {user.skills.length > 3 && (
-              <Chip label={`+${user.skills.length - 3} more`} size="small" variant="outlined" color="primary" />
+            {user.Employee_Skills.length > 3 && (
+              <Chip label={`+${user.Employee_Skills.length - 3} more`} size="small" variant="outlined" color="primary" />
             )}
           </Box>
         </Box>
@@ -278,30 +295,26 @@ const Users: React.FC = () => {
       <TableCell>
         <Box sx={{ display: 'flex', alignItems: 'center' }}>
           <Avatar sx={{ width: 40, height: 40, mr: 2 }}>
-            {user.avatar ? (
-              <img src={user.avatar} alt={user.employeeName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              user.employeeName.split(' ').map(n => n[0]).join('')
-            )}
+            {user.name.split(' ').map(n => n[0]).join('')}
           </Avatar>
           <Box>
             <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
-              {user.employeeName}
+              {user.name}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {user.employeeId}
+              {user.user_ID}
             </Typography>
           </Box>
         </Box>
       </TableCell>
       <TableCell>{user.email}</TableCell>
-      <TableCell>{user.department}</TableCell>
-      <TableCell>{user.position}</TableCell>
-      <TableCell>{formatExperience(user.yearsOfExperience)}</TableCell>
+      <TableCell>{user.teamId.replace('team-', '').charAt(0).toUpperCase() + user.teamId.replace('team-', '').slice(1)}</TableCell>
+      <TableCell>{user.role}</TableCell>
+      <TableCell>{formatExperience(user.Years_of_Experience)}</TableCell>
       <TableCell>
         <Badge 
-          badgeContent={user.status.toUpperCase()} 
-          color={getStatusColor(user.status) as any}
+          badgeContent={user.isActive ? 'ACTIVE' : 'INACTIVE'} 
+          color={user.isActive ? 'success' : 'error'}
         />
       </TableCell>
       <TableCell>
@@ -359,15 +372,17 @@ const Users: React.FC = () => {
             </Grid>
             <Grid item xs={12} md={2}>
               <FormControl fullWidth>
-                <InputLabel>Department</InputLabel>
+                <InputLabel>Team</InputLabel>
                 <Select
-                  value={departmentFilter}
-                  label="Department"
-                  onChange={(e) => setDepartmentFilter(e.target.value)}
+                  value={teamFilter}
+                  label="Team"
+                  onChange={(e) => setTeamFilter(e.target.value)}
                 >
-                  <MenuItem value="all">All Departments</MenuItem>
-                  {departments.map(dept => (
-                    <MenuItem key={dept} value={dept}>{dept}</MenuItem>
+                  <MenuItem value="all">All Teams</MenuItem>
+                  {teams.map(team => (
+                    <MenuItem key={team} value={team}>
+                      {team.replace('team-', '').charAt(0).toUpperCase() + team.replace('team-', '').slice(1)}
+                    </MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -383,7 +398,6 @@ const Users: React.FC = () => {
                   <MenuItem value="all">All Status</MenuItem>
                   <MenuItem value="active">Active</MenuItem>
                   <MenuItem value="inactive">Inactive</MenuItem>
-                  <MenuItem value="on-leave">On Leave</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -416,19 +430,46 @@ const Users: React.FC = () => {
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" color="text.secondary">
           Showing {filteredUsers.length} of {users.length} users
-          {(searchTerm || departmentFilter !== 'all' || statusFilter !== 'all') && ' (filtered)'}
+          {(searchTerm || teamFilter !== 'all' || statusFilter !== 'all') && ' (filtered)'}
         </Typography>
       </Box>
 
       {/* Users Display */}
-      {filteredUsers.length === 0 ? (
-        <Alert severity="info" sx={{ mt: 2 }}>
-          No users found matching your criteria.
-        </Alert>
+      {filteredUsers.length === 0 && !loading ? (
+        <Box sx={{ mt: 3, textAlign: 'center' }}>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {users.length === 0 ? (
+              <>
+                No users found. This could be because:
+                <ul style={{ textAlign: 'left', margin: '8px 0' }}>
+                  <li>The database is empty</li>
+                  <li>The API is not responding</li>
+                  <li>There's a network connectivity issue</li>
+                </ul>
+                Mock users should have been loaded automatically for demonstration.
+              </>
+            ) : (
+              'No users found matching your search criteria.'
+            )}
+          </Alert>
+          {users.length === 0 && (
+            <Button 
+              variant="contained" 
+              onClick={loadUsers}
+              startIcon={<Add />}
+            >
+              Retry Loading Users
+            </Button>
+          )}
+        </Box>
+      ) : loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+          <CircularProgress />
+        </Box>
       ) : viewMode === 'cards' ? (
         <Grid container spacing={3}>
           {filteredUsers.map((user) => (
-            <Grid item xs={12} sm={6} md={4} lg={3} key={user.userId}>
+            <Grid item xs={12} sm={6} md={4} lg={3} key={user.user_ID}>
               <UserCard user={user} />
             </Grid>
           ))}
@@ -440,8 +481,8 @@ const Users: React.FC = () => {
               <TableRow>
                 <TableCell>Name</TableCell>
                 <TableCell>Email</TableCell>
-                <TableCell>Department</TableCell>
-                <TableCell>Position</TableCell>
+                <TableCell>Team</TableCell>
+                <TableCell>Role</TableCell>
                 <TableCell>Experience</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Actions</TableCell>
@@ -449,7 +490,7 @@ const Users: React.FC = () => {
             </TableHead>
             <TableBody>
               {filteredUsers.map((user) => (
-                <UserTableRow key={user.userId} user={user} />
+                <UserTableRow key={user.user_ID} user={user} />
               ))}
             </TableBody>
           </Table>
@@ -463,20 +504,12 @@ const Users: React.FC = () => {
             <DialogTitle>
               <Box sx={{ display: 'flex', alignItems: 'center' }}>
                 <Avatar sx={{ width: 50, height: 50, mr: 2 }}>
-                  {selectedUser.avatar ? (
-                    <img 
-                      src={selectedUser.avatar} 
-                      alt={selectedUser.employeeName} 
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                    />
-                  ) : (
-                    selectedUser.employeeName.split(' ').map(n => n[0]).join('')
-                  )}
+                  {selectedUser.name.split(' ').map(n => n[0]).join('')}
                 </Avatar>
                 <Box>
-                  <Typography variant="h6">{selectedUser.employeeName}</Typography>
+                  <Typography variant="h6">{selectedUser.name}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {selectedUser.employeeId} • {selectedUser.position}
+                    {selectedUser.user_ID} • {selectedUser.role}
                   </Typography>
                 </Box>
               </Box>
@@ -491,47 +524,34 @@ const Users: React.FC = () => {
                     <Email sx={{ mr: 1, fontSize: 16, verticalAlign: 'text-bottom' }} />
                     {selectedUser.email}
                   </Typography>
-                  {selectedUser.phoneNumber && (
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      <Phone sx={{ mr: 1, fontSize: 16, verticalAlign: 'text-bottom' }} />
-                      {selectedUser.phoneNumber}
-                    </Typography>
-                  )}
-                  {selectedUser.location && (
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      <Business sx={{ mr: 1, fontSize: 16, verticalAlign: 'text-bottom' }} />
-                      {selectedUser.location}
-                    </Typography>
-                  )}
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    <Business sx={{ mr: 1, fontSize: 16, verticalAlign: 'text-bottom' }} />
+                    Team: {selectedUser.teamId}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
                   <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
                     Employment Details
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    Department: {selectedUser.department}
+                    Role: {selectedUser.role}
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    Experience: {formatExperience(selectedUser.yearsOfExperience)}
+                    Experience: {formatExperience(selectedUser.Years_of_Experience)}
                   </Typography>
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    Join Date: {formatJoinDate(selectedUser.joinDate)}
+                    Team: {selectedUser.teamId}
                   </Typography>
-                  {selectedUser.manager && (
-                    <Typography variant="body2" sx={{ mb: 1 }}>
-                      Manager: {selectedUser.manager}
-                    </Typography>
-                  )}
                   <Typography variant="body2" sx={{ mb: 1 }}>
-                    Status: <Badge badgeContent={selectedUser.status.toUpperCase()} color={getStatusColor(selectedUser.status) as any} />
+                    Status: <Badge badgeContent={selectedUser.isActive ? 'ACTIVE' : 'INACTIVE'} color={selectedUser.isActive ? 'success' : 'error'} />
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold' }}>
                     Skills & Expertise
                   </Typography>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                    {selectedUser.skills.map((skill, index) => (
+                    {selectedUser.Employee_Skills.map((skill, index) => (
                       <Chip key={index} label={skill} variant="outlined" />
                     ))}
                   </Box>

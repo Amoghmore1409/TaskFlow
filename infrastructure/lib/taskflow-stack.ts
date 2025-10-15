@@ -292,6 +292,42 @@ export class TaskFlowStack extends cdk.Stack {
       handler: 'fileHandlers.deleteFile',
     });
 
+    // User Management Lambda Functions
+    const listUsersFunction = new lambda.Function(this, 'ListUsersFunction', {
+      ...lambdaConfig,
+      functionName: 'taskflow-list-users',
+      code: lambda.Code.fromAsset('../backend/dist/lambdas/users'),
+      handler: 'userHandlers.listUsers',
+    });
+
+    const createUserFunction = new lambda.Function(this, 'CreateUserFunction', {
+      ...lambdaConfig,
+      functionName: 'taskflow-create-user',
+      code: lambda.Code.fromAsset('../backend/dist/lambdas/users'),
+      handler: 'userHandlers.createUser',
+    });
+
+    const getUserFunction = new lambda.Function(this, 'GetUserFunction', {
+      ...lambdaConfig,
+      functionName: 'taskflow-get-user',
+      code: lambda.Code.fromAsset('../backend/dist/lambdas/users'),
+      handler: 'userHandlers.getUser',
+    });
+
+    const updateUserFunction = new lambda.Function(this, 'UpdateUserFunction', {
+      ...lambdaConfig,
+      functionName: 'taskflow-update-user',
+      code: lambda.Code.fromAsset('../backend/dist/lambdas/users'),
+      handler: 'userHandlers.updateUser',
+    });
+
+    const deleteUserFunction = new lambda.Function(this, 'DeleteUserFunction', {
+      ...lambdaConfig,
+      functionName: 'taskflow-delete-user',
+      code: lambda.Code.fromAsset('../backend/dist/lambdas/users'),
+      handler: 'userHandlers.deleteUser',
+    });
+
     // API Gateway
     const api = new apigateway.RestApi(this, 'TaskFlowApi', {
       restApiName: 'TaskFlow API',
@@ -368,6 +404,26 @@ export class TaskFlowStack extends cdk.Stack {
       authorizer: cognitoAuthorizer,
     });
     fileResource.addMethod('DELETE', new apigateway.LambdaIntegration(deleteFileFunction), {
+      authorizer: cognitoAuthorizer,
+    });
+
+    // Users routes
+    const usersResource = api.root.addResource('users');
+    usersResource.addMethod('GET', new apigateway.LambdaIntegration(listUsersFunction), {
+      authorizer: cognitoAuthorizer,
+    });
+    usersResource.addMethod('POST', new apigateway.LambdaIntegration(createUserFunction), {
+      authorizer: cognitoAuthorizer,
+    });
+
+    const userResource = usersResource.addResource('{id}');
+    userResource.addMethod('GET', new apigateway.LambdaIntegration(getUserFunction), {
+      authorizer: cognitoAuthorizer,
+    });
+    userResource.addMethod('PUT', new apigateway.LambdaIntegration(updateUserFunction), {
+      authorizer: cognitoAuthorizer,
+    });
+    userResource.addMethod('DELETE', new apigateway.LambdaIntegration(deleteUserFunction), {
       authorizer: cognitoAuthorizer,
     });
 

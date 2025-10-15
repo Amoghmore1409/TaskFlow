@@ -1,408 +1,207 @@
-// User interface definition
+// User interface definition (matching display needs)
 export interface User {
-  userId: string;
-  employeeName: string;
-  employeeId: string;
-  email: string;
-  department: string;
-  position: string;
-  skills: string[];
-  yearsOfExperience: number;
-  joinDate: string;
-  manager?: string;
-  phoneNumber?: string;
-  location?: string;
-  status: 'active' | 'inactive' | 'on-leave';
-  avatar?: string;
+  user_ID: string;
   createdAt: string;
-  updatedAt: string;
-}
-
-// API response types
-interface UsersResponse {
-  users: User[];
-  count: number;
-}
-
-interface CreateUserRequest {
-  employeeName: string;
-  employeeId: string;
   email: string;
-  department: string;
-  position: string;
-  skills: string[];
-  yearsOfExperience: number;
-  joinDate: string;
-  manager?: string;
-  phoneNumber?: string;
-  location?: string;
-  status: 'active' | 'inactive' | 'on-leave';
+  Employee_Skills: string[];
+  isActive: boolean;
+  name: string;
+  role: string;
+  teamId: string;
+  updatedAt: string;
+  Years_of_Experience: number;
 }
-
-interface UpdateUserRequest extends Partial<CreateUserRequest> {
-  userId: string;
-}
-
-// API Configuration
-const USE_DEVELOPMENT_CORS_PROXY = true;
-const API_BASE_URL_USER = 'https://owsbp59rqk.execute-api.us-east-1.amazonaws.com/dev/users';
-const API_BASE_URL_ID = 'https://owsbp59rqk.execute-api.us-east-1.amazonaws.com/dev';
 
 export class UserService {
-  private static async makeRequest<T>(
-    endpoint: string,
-    options: RequestInit = {},
-    useUserUrl = true
-  ): Promise<T> {
-    // Choose the correct base URL based on the operation
-    const baseUrl = useUserUrl ? API_BASE_URL_USER : API_BASE_URL_ID;
-    const directUrl = `${baseUrl}${endpoint}`;
-    
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-    };
-
-    const config: RequestInit = {
-      ...options,
-      headers: {
-        ...defaultHeaders,
-        ...options.headers,
-      },
-    };
-
-    console.log(`🔄 Making User API request to: ${directUrl}`, { method: options.method || 'GET', headers: config.headers });
-
-    try {
-      const response = await fetch(directUrl, config);
-      
-      console.log(`📡 User API Response Status: ${response.status} ${response.statusText}`);
-      
-      if (!response.ok) {
-        const errorBody = await response.text();
-        const errorMessage = `User API request failed: ${response.status} ${response.statusText}. ${errorBody}`;
-        console.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      // Handle empty responses
-      const text = await response.text();
-      console.log('📋 Raw User API Response:', text);
-      
-      if (!text) {
-        console.log('📝 Empty response, returning empty object');
-        return {} as T;
-      }
-
-      try {
-        const parsed = JSON.parse(text) as T;
-        console.log('✅ Parsed User API Response:', parsed);
-        return parsed;
-      } catch (parseError) {
-        console.warn('⚠️ Response is not valid JSON:', text);
-        return text as unknown as T;
-      }
-    } catch (error) {
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        console.error(`🚨 Network error - check if User API is accessible: ${directUrl}`, error);
-        
-        // Check if this looks like a CORS error
-        const errorMsg = error.message.toLowerCase();
-        if (errorMsg.includes('cors') || errorMsg.includes('network') || errorMsg.includes('fetch')) {
-          throw new Error(`CORS Error: Browser blocked the request to ${directUrl}. 
-
-Fix needed: Configure API Gateway to handle OPTIONS preflight requests for User API.
-
-Temporary workaround: 
-1. Open AWS API Gateway Console
-2. Find your API and select the /user resource  
-3. Actions → Enable CORS
-4. Set Access-Control-Allow-Origin: *
-5. Actions → Deploy API`);
-        }
-      }
-      console.error(`💥 User API request to ${directUrl} failed:`, error);
-      throw error;
-    }
-  }
-
-  // Get all users
+  // Get all users (mock data only)
   static async getAllUsers(): Promise<User[]> {
-    console.log('🔄 UserService.getAllUsers called');
+    console.log('🔄 UserService.getAllUsers called - using mock data');
     
-    // For development, use CORS workaround if needed
-    if (USE_DEVELOPMENT_CORS_PROXY && window.location.hostname === 'localhost') {
-      try {
-        console.log('🔄 Attempting direct API call...');
-        const response = await fetch(`${API_BASE_URL_USER}`);
-        console.log('📡 Direct API response status:', response.status);
-        
-        if (response.ok) {
-          const data = await response.json();
-          console.log('✅ Direct API call successful:', data);
-          const users = data.users || (Array.isArray(data) ? data : []);
-          return Array.isArray(users) ? users : [];
-        }
-        throw new Error('Direct API call failed');
-      } catch (corsError) {
-        console.warn('🚨 Direct API call blocked by CORS, using proxy...');
-        try {
-          // Use CORS proxy as fallback
-          const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`${API_BASE_URL_USER}`)}`;
-          console.log('🌐 Using proxy URL:', proxyUrl);
-          
-          const response = await fetch(proxyUrl);
-          if (response.ok) {
-            const proxyData = await response.json();
-            const actualData = JSON.parse(proxyData.contents);
-            const users = actualData.users || (Array.isArray(actualData) ? actualData : []);
-            console.log('✅ Proxy call successful:', users);
-            return Array.isArray(users) ? users : [];
-          }
-          throw new Error('Proxy call failed');
-        } catch (proxyError) {
-          console.error('🚨 Both direct and proxy calls failed:', { corsError, proxyError });
-          console.log('🔧 Using mock user data for development');
-          return this.getMockUsers();
-        }
-      }
-    }
-
-    // Production path
-    const response = await this.makeRequest<UsersResponse>('', {
-      method: 'GET',
-    });
-
-    return Array.isArray(response.users) ? response.users : [];
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    return this.getMockUsers();
   }
 
-  // Get a specific user by ID
+  // Get a specific user by ID (mock data only)
   static async getUserById(userId: string): Promise<User> {
-    console.log('🔄 UserService.getUserById called with ID:', userId);
+    console.log('� UserService.getUserById called with ID:', userId);
     
-    const response = await this.makeRequest<User>(`/${userId}`, {
-      method: 'GET',
-    }, false);
-
-    return response;
+    const users = this.getMockUsers();
+    const user = users.find(u => u.user_ID === userId);
+    
+    if (!user) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    
+    return user;
   }
 
-  // Create a new user
-  static async createUser(userData: CreateUserRequest): Promise<User> {
+  // Create a new user (mock functionality)
+  static async createUser(userData: Partial<User>): Promise<User> {
     console.log('🔄 UserService.createUser called with data:', userData);
     
-    // For development CORS workaround
-    if (USE_DEVELOPMENT_CORS_PROXY && window.location.hostname === 'localhost') {
-      console.log('📍 Entering CORS workaround path for user creation...');
-      
-      try {
-        console.log('🔄 Attempting direct API call...');
-        const directResponse = await fetch(`${API_BASE_URL_USER}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(userData),
-        });
-        
-        console.log('📡 Direct API response status:', directResponse.status);
-        
-        if (directResponse.ok) {
-          const data = await directResponse.json();
-          console.log('✅ Direct API call successful! User created:', data);
-          return data;
-        }
-        
-        const errorText = await directResponse.text();
-        console.log('❌ Direct API call failed, error text:', errorText);
-        throw new Error(`Direct API call failed: ${directResponse.status} ${directResponse.statusText}`);
-      } catch (corsError) {
-        console.log('🚨 Direct API call failed with error:', corsError);
-        console.warn('Direct API call blocked by CORS, using proxy for POST...');
-        
-        try {
-          console.log('🔄 Attempting CORS proxy...');
-          const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(`${API_BASE_URL_USER}`);
-          console.log('🌐 Proxy URL:', proxyUrl);
-          
-          const proxyResponse = await fetch(proxyUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(userData),
-          });
-          
-          console.log('📡 Proxy response status:', proxyResponse.status);
-          
-          if (proxyResponse.ok) {
-            const result = await proxyResponse.json();
-            console.log('✅ CORS proxy successful! User created via proxy:', result);
-            return result;
-          }
-          
-          const proxyErrorText = await proxyResponse.text();
-          console.log('❌ Proxy request failed, error text:', proxyErrorText);
-          throw new Error(`Proxy request failed: ${proxyResponse.status}`);
-        } catch (proxyError) {
-          console.error('🚨 Both direct and proxy requests failed:', proxyError);
-          console.warn('🔄 Creating mock user for development since API is not accessible');
-          
-          // Create a mock user for development
-          const mockUser: User = {
-            userId: 'mock-user-' + Date.now(),
-            ...userData,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-          
-          console.log('🔧 Mock user created for development:', mockUser);
-          console.log('⚠️ WARNING: This is a MOCK USER - NOT SAVED TO DATABASE!');
-          return mockUser;
-        }
-      }
-    }
-
-    // Production code path
-    const response = await this.makeRequest<User>('', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-
-    return response;
+    const newUser: User = {
+      user_ID: 'user-' + Date.now(),
+      name: userData.name || 'New User',
+      email: userData.email || 'new@taskflow.com',
+      role: userData.role || 'Employee',
+      Employee_Skills: userData.Employee_Skills || [],
+      Years_of_Experience: userData.Years_of_Experience || 0,
+      teamId: userData.teamId || 'team-general',
+      isActive: userData.isActive !== undefined ? userData.isActive : true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    
+    console.log('🎭 Mock user created:', newUser);
+    return newUser;
   }
 
-  // Update an existing user
-  static async updateUser(userId: string, userData: Partial<CreateUserRequest>): Promise<User> {
+  // Update an existing user (mock functionality)
+  static async updateUser(userId: string, userData: Partial<User>): Promise<User> {
     console.log('🔄 UserService.updateUser called with ID:', userId, 'data:', userData);
     
-    const updateData: UpdateUserRequest = {
-      userId,
+    const existingUser = await this.getUserById(userId);
+    const updatedUser: User = {
+      ...existingUser,
       ...userData,
+      user_ID: userId, // Ensure ID doesn't change
+      updatedAt: new Date().toISOString(),
     };
-
-    const response = await this.makeRequest<User>(`/${userId}`, {
-      method: 'PUT',
-      body: JSON.stringify(updateData),
-    }, false);
-
-    return response;
+    
+    console.log('🎭 Mock user updated:', updatedUser);
+    return updatedUser;
   }
 
-  // Delete a user
+  // Delete a user (mock functionality)
   static async deleteUser(userId: string): Promise<void> {
     console.log('🔄 UserService.deleteUser called with ID:', userId);
-    
-    await this.makeRequest<void>(`/${userId}`, {
-      method: 'DELETE',
-    }, false);
+    console.log('🎭 Mock user deletion completed');
+    // In a real implementation, this would remove from the data store
   }
 
-  // Get mock users for development
+  // Get mock users for display
   private static getMockUsers(): User[] {
     return [
       {
-        userId: 'user-001',
-        employeeName: 'John Smith',
-        employeeId: 'EMP001',
-        email: 'john.smith@company.com',
-        department: 'Engineering',
-        position: 'Senior Software Engineer',
-        skills: ['React', 'TypeScript', 'AWS', 'Python'],
-        yearsOfExperience: 5,
-        joinDate: '2020-01-15T00:00:00.000Z',
-        manager: 'Sarah Wilson',
-        phoneNumber: '+1-555-0101',
-        location: 'New York, NY',
-        status: 'active',
-        avatar: '',
+        user_ID: 'user-001',
+        name: 'John Smith',
+        email: 'john.smith@taskflow.com',
+        role: 'Senior Software Engineer',
+        Employee_Skills: ['React', 'TypeScript', 'AWS', 'Python'],
+        Years_of_Experience: 5,
+        teamId: 'team-engineering',
+        isActive: true,
         createdAt: '2020-01-15T00:00:00.000Z',
         updatedAt: '2025-10-15T00:00:00.000Z',
       },
       {
-        userId: 'user-002',
-        employeeName: 'Sarah Wilson',
-        employeeId: 'EMP002',
-        email: 'sarah.wilson@company.com',
-        department: 'Engineering',
-        position: 'Engineering Manager',
-        skills: ['Leadership', 'React', 'AWS', 'Team Management'],
-        yearsOfExperience: 8,
-        joinDate: '2018-03-20T00:00:00.000Z',
-        phoneNumber: '+1-555-0102',
-        location: 'New York, NY',
-        status: 'active',
-        avatar: '',
+        user_ID: 'user-002',
+        name: 'Sarah Wilson',
+        email: 'sarah.wilson@taskflow.com',
+        role: 'Engineering Manager',
+        Employee_Skills: ['Leadership', 'React', 'AWS', 'Team Management'],
+        Years_of_Experience: 8,
+        teamId: 'team-engineering',
+        isActive: true,
         createdAt: '2018-03-20T00:00:00.000Z',
         updatedAt: '2025-10-15T00:00:00.000Z',
       },
       {
-        userId: 'user-003',
-        employeeName: 'Mike Johnson',
-        employeeId: 'EMP003',
-        email: 'mike.johnson@company.com',
-        department: 'Marketing',
-        position: 'Marketing Specialist',
-        skills: ['Digital Marketing', 'Content Creation', 'Analytics', 'SEO'],
-        yearsOfExperience: 3,
-        joinDate: '2022-06-10T00:00:00.000Z',
-        manager: 'Emily Davis',
-        phoneNumber: '+1-555-0103',
-        location: 'San Francisco, CA',
-        status: 'active',
-        avatar: '',
+        user_ID: 'user-003',
+        name: 'Mike Johnson',
+        email: 'mike.johnson@taskflow.com',
+        role: 'Marketing Specialist',
+        Employee_Skills: ['Digital Marketing', 'Content Creation', 'Analytics', 'SEO'],
+        Years_of_Experience: 3,
+        teamId: 'team-marketing',
+        isActive: true,
         createdAt: '2022-06-10T00:00:00.000Z',
         updatedAt: '2025-10-15T00:00:00.000Z',
       },
       {
-        userId: 'user-004',
-        employeeName: 'Emily Davis',
-        employeeId: 'EMP004',
-        email: 'emily.davis@company.com',
-        department: 'Marketing',
-        position: 'Marketing Manager',
-        skills: ['Strategy', 'Brand Management', 'Team Leadership', 'Analytics'],
-        yearsOfExperience: 6,
-        joinDate: '2019-09-01T00:00:00.000Z',
-        phoneNumber: '+1-555-0104',
-        location: 'San Francisco, CA',
-        status: 'active',
-        avatar: '',
+        user_ID: 'user-004',
+        name: 'Emily Davis',
+        email: 'emily.davis@taskflow.com',
+        role: 'Marketing Manager',
+        Employee_Skills: ['Strategy', 'Brand Management', 'Team Leadership', 'Analytics'],
+        Years_of_Experience: 6,
+        teamId: 'team-marketing',
+        isActive: true,
         createdAt: '2019-09-01T00:00:00.000Z',
         updatedAt: '2025-10-15T00:00:00.000Z',
       },
       {
-        userId: 'user-005',
-        employeeName: 'David Brown',
-        employeeId: 'EMP005',
-        email: 'david.brown@company.com',
-        department: 'Finance',
-        position: 'Financial Analyst',
-        skills: ['Financial Analysis', 'Excel', 'SQL', 'Data Modeling'],
-        yearsOfExperience: 4,
-        joinDate: '2021-02-14T00:00:00.000Z',
-        manager: 'Lisa Chen',
-        phoneNumber: '+1-555-0105',
-        location: 'Chicago, IL',
-        status: 'on-leave',
-        avatar: '',
+        user_ID: 'user-005',
+        name: 'David Brown',
+        email: 'david.brown@taskflow.com',
+        role: 'Financial Analyst',
+        Employee_Skills: ['Financial Analysis', 'Excel', 'SQL', 'Data Modeling'],
+        Years_of_Experience: 4,
+        teamId: 'team-finance',
+        isActive: false,
         createdAt: '2021-02-14T00:00:00.000Z',
         updatedAt: '2025-10-15T00:00:00.000Z',
       },
       {
-        userId: 'user-006',
-        employeeName: 'Lisa Chen',
-        employeeId: 'EMP006',
-        email: 'lisa.chen@company.com',
-        department: 'Finance',
-        position: 'Finance Director',
-        skills: ['Financial Planning', 'Leadership', 'Strategic Analysis', 'Budget Management'],
-        yearsOfExperience: 10,
-        joinDate: '2016-11-30T00:00:00.000Z',
-        phoneNumber: '+1-555-0106',
-        location: 'Chicago, IL',
-        status: 'active',
-        avatar: '',
+        user_ID: 'user-006',
+        name: 'Lisa Chen',
+        email: 'lisa.chen@taskflow.com',
+        role: 'Finance Director',
+        Employee_Skills: ['Financial Planning', 'Leadership', 'Strategic Analysis', 'Budget Management'],
+        Years_of_Experience: 10,
+        teamId: 'team-finance',
+        isActive: true,
         createdAt: '2016-11-30T00:00:00.000Z',
+        updatedAt: '2025-10-15T00:00:00.000Z',
+      },
+      {
+        user_ID: 'user-007',
+        name: 'Alex Rodriguez',
+        email: 'alex.rodriguez@taskflow.com',
+        role: 'UX Designer',
+        Employee_Skills: ['Figma', 'User Research', 'Prototyping', 'UI/UX Design'],
+        Years_of_Experience: 4,
+        teamId: 'team-design',
+        isActive: true,
+        createdAt: '2021-08-12T00:00:00.000Z',
+        updatedAt: '2025-10-15T00:00:00.000Z',
+      },
+      {
+        user_ID: 'user-008',
+        name: 'Maria Garcia',
+        email: 'maria.garcia@taskflow.com',
+        role: 'HR Business Partner',
+        Employee_Skills: ['Talent Acquisition', 'Employee Relations', 'Performance Management', 'Compliance'],
+        Years_of_Experience: 7,
+        teamId: 'team-hr',
+        isActive: true,
+        createdAt: '2019-04-22T00:00:00.000Z',
+        updatedAt: '2025-10-15T00:00:00.000Z',
+      },
+      {
+        user_ID: 'user-009',
+        name: 'Robert Kim',
+        email: 'robert.kim@taskflow.com',
+        role: 'DevOps Engineer',
+        Employee_Skills: ['Docker', 'Kubernetes', 'AWS', 'CI/CD', 'Infrastructure'],
+        Years_of_Experience: 6,
+        teamId: 'team-engineering',
+        isActive: true,
+        createdAt: '2020-07-08T00:00:00.000Z',
+        updatedAt: '2025-10-15T00:00:00.000Z',
+      },
+      {
+        user_ID: 'user-010',
+        name: 'Jennifer Lee',
+        email: 'jennifer.lee@taskflow.com',
+        role: 'Product Manager',
+        Employee_Skills: ['Product Strategy', 'Roadmap Planning', 'Stakeholder Management', 'Agile'],
+        Years_of_Experience: 8,
+        teamId: 'team-product',
+        isActive: true,
+        createdAt: '2018-12-03T00:00:00.000Z',
         updatedAt: '2025-10-15T00:00:00.000Z',
       }
     ];
