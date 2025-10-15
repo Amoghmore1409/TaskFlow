@@ -7,7 +7,6 @@ import {
   Typography,
   Paper,
   CircularProgress,
-  Button,
   Avatar,
   Chip,
   List,
@@ -27,7 +26,6 @@ import {
   AccessTime as TimeIcon,
   CheckCircle as CheckIcon,
   Warning as WarningIcon,
-  Add as AddIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
 import {
@@ -390,22 +388,13 @@ const Dashboard: React.FC = () => {
 
   return (
     <Box>
-      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
-            Welcome back, {user?.name}! 👋
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Here's what's happening with your team today.
-          </Typography>
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => console.log('Quick action clicked')}
-        >
-          Quick Action
-        </Button>
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
+          Welcome back, {user?.name}!
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Here's what's happening with your team today.
+        </Typography>
       </Box>
       
       {/* Statistics Cards */}

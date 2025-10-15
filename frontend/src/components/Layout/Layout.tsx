@@ -26,7 +26,6 @@ import {
   People as UsersIcon,
   AccountCircle as ProfileIcon,
   Logout as LogoutIcon,
-  Notifications as NotificationsIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
@@ -119,9 +118,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'TaskFlow'}
           </Typography>
-          <IconButton color="inherit" sx={{ mr: 1 }}>
-            <NotificationsIcon />
-          </IconButton>
           <IconButton
             color="inherit"
             onClick={handleProfileMenuOpen}

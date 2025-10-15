@@ -480,18 +480,33 @@ const KanbanBoard: React.FC = () => {
   };
 
   return (
-    <Box sx={{ p: 3, height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ 
+      p: { xs: 1, sm: 2, md: 3 }, // Responsive padding
+      minHeight: '100vh', 
+      display: 'flex', 
+      flexDirection: 'column',
+      overflow: 'auto', // Allow scrolling when content exceeds viewport
+      position: 'relative' // Ensure proper stacking context
+    }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: { xs: 2, md: 3 }, 
+        flexShrink: 0,
+        flexWrap: 'wrap',
+        gap: 1
+      }}>
+        <Typography variant="h4" component="h1" sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}>
           Kanban Board
         </Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           <Button
             variant="outlined"
             startIcon={<SettingsIcon />}
             onClick={() => setShowWipSettings(true)}
-            sx={{ borderRadius: 2 }}
+            sx={{ borderRadius: 2, minWidth: 'auto' }}
           >
             WIP Settings
           </Button>
@@ -499,7 +514,7 @@ const KanbanBoard: React.FC = () => {
             variant="contained"
             startIcon={<AddIcon />}
             onClick={() => handleOpenDialog()}
-            sx={{ borderRadius: 2 }}
+            sx={{ borderRadius: 2, minWidth: 'auto' }}
           >
             Add Task
           </Button>
@@ -507,13 +522,14 @@ const KanbanBoard: React.FC = () => {
       </Box>
 
       {/* Statistics */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {columns.map((column) => {
-          const columnTasks = getTasksForColumn(column.status);
-          return (
-            <Grid item xs={12} sm={6} md={3} key={column.id}>
-              <Card sx={{ backgroundColor: column.color, border: '1px solid #e0e0e0' }}>
-                <CardContent sx={{ py: 2 }}>
+      <Box sx={{ mb: 3, flexShrink: 0 }}>
+        <Grid container spacing={3}>
+          {columns.map((column) => {
+            const columnTasks = getTasksForColumn(column.status);
+            return (
+              <Grid item xs={12} sm={6} lg={3} xl={2.4} key={column.id}>
+                <Card sx={{ backgroundColor: column.color, border: '1px solid #e0e0e0' }}>
+                  <CardContent sx={{ py: 2 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center' }}>
                       {column.icon}
@@ -543,21 +559,43 @@ const KanbanBoard: React.FC = () => {
             </Grid>
           );
         })}
-      </Grid>
+        </Grid>
+      </Box>
 
       {/* Kanban Board */}
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <Grid container spacing={2} sx={{ height: 'calc(100vh - 300px)', overflow: 'hidden' }}>
+      <Box sx={{ 
+        flexGrow: 1, 
+        minHeight: 0, 
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <Grid container spacing={3} sx={{ 
+            height: '100%',
+            overflow: 'auto', // Changed from hidden to auto to allow scrolling
+            flexGrow: 1,
+            '& .MuiGrid-item': {
+              display: 'flex',
+              minHeight: 0 // Important for flex children
+            }
+          }}>
           {columns.map((column) => {
             const columnTasks = getTasksForColumn(column.status);
             const isAtLimit = Boolean(column.maxItems && column.maxItems > 0 && columnTasks.length >= column.maxItems);
             const isNearLimit = Boolean(column.maxItems && column.maxItems > 0 && columnTasks.length >= column.maxItems * 0.8);
             
             return (
-              <Grid item xs={12} sm={6} md={3} key={column.id}>
+              <Grid item xs={12} sm={6} lg={3} xl={2.4} key={column.id} sx={{ minHeight: 0 }}>
                 <Paper 
                   sx={{ 
-                    height: '100%', 
+                    height: { 
+                      xs: 'auto', // Mobile: auto height, let content determine
+                      sm: '70vh', // Tablet: 70% of viewport height
+                      md: '75vh' // Desktop: 75% of viewport height
+                    }, 
+                    minHeight: { xs: '400px', sm: '500px', md: '600px' }, // Minimum heights for each breakpoint
+                    maxHeight: { xs: '80vh', sm: '85vh', md: '90vh' }, // Maximum heights to prevent overflow
                     display: 'flex', 
                     flexDirection: 'column',
                     backgroundColor: column.color,
@@ -566,7 +604,7 @@ const KanbanBoard: React.FC = () => {
                   }}
                 >
                   {/* Column Header */}
-                  <Box sx={{ p: 2, borderBottom: '1px solid #e0e0e0' }}>
+                  <Box sx={{ p: 3, borderBottom: '1px solid #e0e0e0' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         {column.icon}
@@ -596,14 +634,30 @@ const KanbanBoard: React.FC = () => {
                           {...provided.droppableProps}
                           sx={{
                             flexGrow: 1,
-                            p: 1,
-                            minHeight: 200,
+                            p: 2, // Increased padding from 1 to 2
+                            minHeight: 100,
+                            height: '100%', // Take full height of parent
                             backgroundColor: snapshot.isDraggingOver 
                               ? (isAtLimit ? '#ffebee' : '#f0f0f0') 
                               : 'transparent',
                             border: snapshot.isDraggingOver && isAtLimit ? '2px dashed #f44336' : 'none',
                             overflowY: 'auto',
+                            overflowX: 'hidden',
                             position: 'relative',
+                            '&::-webkit-scrollbar': {
+                              width: '6px',
+                            },
+                            '&::-webkit-scrollbar-track': {
+                              background: '#f1f1f1',
+                              borderRadius: '3px',
+                            },
+                            '&::-webkit-scrollbar-thumb': {
+                              background: '#888',
+                              borderRadius: '3px',
+                            },
+                            '&::-webkit-scrollbar-thumb:hover': {
+                              background: '#555',
+                            },
                           }}
                         >
                           {isAtLimit && !canDrop && (
@@ -640,7 +694,7 @@ const KanbanBoard: React.FC = () => {
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
                                 sx={{
-                                  mb: 1,
+                                  mb: 2, // Increased margin bottom for better spacing
                                   cursor: 'pointer',
                                   transform: snapshot.isDragging ? 'rotate(5deg)' : 'none',
                                   boxShadow: snapshot.isDragging ? 4 : 1,
@@ -651,9 +705,9 @@ const KanbanBoard: React.FC = () => {
                                   },
                                 }}
                               >
-                                <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
                                   {/* Task Header */}
-                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
                                     <Typography variant="subtitle2" fontWeight="bold" noWrap>
                                       {task.title}
                                     </Typography>
@@ -774,7 +828,8 @@ const KanbanBoard: React.FC = () => {
             );
           })}
         </Grid>
-      </DragDropContext>
+        </DragDropContext>
+      </Box>
 
       {/* Context Menu */}
       <Menu
