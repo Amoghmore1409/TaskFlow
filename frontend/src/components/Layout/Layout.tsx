@@ -15,6 +15,7 @@ import {
   Avatar,
   Menu,
   MenuItem,
+  Tooltip,
   Divider,
 } from '@mui/material';
 import {
@@ -26,9 +27,12 @@ import {
   People as UsersIcon,
   AccountCircle as ProfileIcon,
   Logout as LogoutIcon,
+  LightMode as LightModeIcon,
+  DarkMode as DarkModeIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../../context';
 
 const drawerWidth = 240;
 
@@ -42,6 +46,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { isDarkMode, toggleTheme } = useTheme();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -118,6 +123,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 'TaskFlow'}
           </Typography>
+          <Tooltip title={isDarkMode ? "Switch to light mode" : "Switch to dark mode"}>
+            <IconButton
+              color="inherit"
+              onClick={toggleTheme}
+              aria-label="toggle theme"
+              sx={{ mr: 1 }}
+            >
+              {isDarkMode ? <LightModeIcon /> : <DarkModeIcon />}
+            </IconButton>
+          </Tooltip>
           <IconButton
             color="inherit"
             onClick={handleProfileMenuOpen}

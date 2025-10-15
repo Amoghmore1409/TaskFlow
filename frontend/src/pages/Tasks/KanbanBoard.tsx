@@ -44,7 +44,7 @@ import {
   Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd';
-import { useNotification } from '../../context';
+import { useNotification, useTheme } from '../../context';
 import { TaskService } from '../../services/taskService';
 
 // AWS SDK imports for production use
@@ -170,6 +170,7 @@ const teamMembers = [
 
 const KanbanBoard: React.FC = () => {
   const { showNotification } = useNotification();
+  const { isDarkMode } = useTheme();
 
   // Helper notification functions
   const showSuccess = useCallback((message: string) => showNotification(message, 'success'), [showNotification]);
@@ -212,13 +213,13 @@ const KanbanBoard: React.FC = () => {
     Required_Skills: [],
   });
 
-  // Define Kanban columns with dynamic WIP limits
+  // Define Kanban columns with dynamic WIP limits and theme-aware colors
   const columns: Column[] = [
     {
       id: 'pending',
       title: 'Pending',
       status: 'pending',
-      color: '#f5f5f5',
+      color: isDarkMode ? '#2c2c2c' : '#f5f5f5',
       icon: <AssignmentIcon />,
       maxItems: wipLimits['pending'] || undefined,
     },
@@ -226,7 +227,7 @@ const KanbanBoard: React.FC = () => {
       id: 'in-progress',
       title: 'In Progress',
       status: 'in-progress',
-      color: '#e3f2fd',
+      color: isDarkMode ? '#1a2332' : '#e3f2fd',
       icon: <ScheduleIcon />,
       maxItems: wipLimits['in-progress'] || undefined,
     },
@@ -234,7 +235,7 @@ const KanbanBoard: React.FC = () => {
       id: 'completed',
       title: 'Completed',
       status: 'completed',
-      color: '#e8f5e8',
+      color: isDarkMode ? '#1b2c1b' : '#e8f5e8',
       icon: <CompleteIcon />,
       maxItems: wipLimits['completed'] || undefined,
     },
