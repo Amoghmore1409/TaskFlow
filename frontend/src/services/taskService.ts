@@ -2,8 +2,8 @@ import { Task } from '../pages/Tasks/Tasks';
 
 // CORS Proxy temporarily enabled - PUT/DELETE methods need CORS in API Gateway
 const USE_DEVELOPMENT_CORS_PROXY = true;
-const API_BASE_URL_TASK = 'https://o3ymruq2aa.execute-api.us-east-1.amazonaws.com/dev/task';
-const API_BASE_URL_ID = 'https://o3ymruq2aa.execute-api.us-east-1.amazonaws.com/dev';
+const API_BASE_URL_TASK = 'https://pws2d5gxbf.execute-api.us-east-1.amazonaws.com/dev/task';
+const API_BASE_URL_ID = 'https://pws2d5gxbf.execute-api.us-east-1.amazonaws.com/dev';
 
 interface CreateTaskRequest {
   title: string;

@@ -49,9 +49,12 @@ import {
   CheckCircle as CompleteIcon,
   Schedule as ScheduleIcon,
   Flag as FlagIcon,
+  AttachFile as AttachFileIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useAuth, useNotification } from '../../context';
 import { TaskService } from '../../services/taskService';
+import { FileService } from '../../services/fileService';
 
 // AWS SDK imports for production use
 // import { DynamoDBClient, ScanCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
@@ -81,6 +84,7 @@ interface TaskFormData {
   dueDate: string;
   Task_Complexity: number;
   Required_Skills: string[];
+  attachments?: string[];
 }
 
 // Mock tasks data (in production, fetch from DynamoDB)
@@ -146,6 +150,7 @@ const Tasks: React.FC = () => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -241,6 +246,27 @@ const Tasks: React.FC = () => {
 
       setLoading(true);
 
+      // Upload files if any are selected
+      let uploadedFileUrls: string[] = formData.attachments || [];
+      if (selectedFiles.length > 0) {
+        setUploading(true);
+        try {
+          console.log(`Uploading ${selectedFiles.length} files...`);
+          const userId = user?.id || 'user-manager-12345';
+          const fileUrls = await FileService.uploadFiles(selectedFiles, userId);
+          uploadedFileUrls = [...uploadedFileUrls, ...fileUrls];
+          console.log('Files uploaded successfully:', fileUrls);
+        } catch (uploadError) {
+          console.error('File upload failed:', uploadError);
+          showError(`File upload failed: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
+          setLoading(false);
+          setUploading(false);
+          return;
+        } finally {
+          setUploading(false);
+        }
+      }
+
       const taskRequestData = {
         title: formData.title,
         description: formData.description,
@@ -250,7 +276,7 @@ const Tasks: React.FC = () => {
         dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : new Date().toISOString(),
         Task_Complexity: formData.Task_Complexity,
         Required_Skills: formData.Required_Skills,
-        attachments: editingTask?.attachments || [],
+        attachments: uploadedFileUrls,
       };
 
       let updatedTask: Task;
@@ -403,6 +429,7 @@ const Tasks: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingTask(null);
+    setSelectedFiles([]);
   };
 
   // Menu handlers
@@ -853,6 +880,114 @@ const Tasks: React.FC = () => {
                 placeholder="Python, SQL, AWS, React"
                 helperText="Enter the skills required for this task, separated by commas"
               />
+            </Grid>
+            
+            {/* File Upload Section */}
+            <Grid item xs={12}>
+              <Box sx={{ border: '1px dashed #ccc', borderRadius: 1, p: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="subtitle2" color="textSecondary">
+                    Attachments
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AttachFileIcon />}
+                    component="label"
+                  >
+                    Upload Files
+                    <input
+                      type="file"
+                      multiple
+                      hidden
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setSelectedFiles((prev: File[]) => [...prev, ...files]);
+                      }}
+                    />
+                  </Button>
+                </Box>
+                
+                {/* Display selected files */}
+                {selectedFiles.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="caption" color="textSecondary">
+                      Selected files ({selectedFiles.length}):
+                    </Typography>
+                    {selectedFiles.map((file: File, index: number) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          mt: 1,
+                          p: 1,
+                          bgcolor: 'grey.100',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <AttachFileIcon fontSize="small" />
+                          <Typography variant="body2">{file.name}</Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            ({(file.size / 1024).toFixed(2)} KB)
+                          </Typography>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setSelectedFiles((prev: File[]) => prev.filter((_: File, i: number) => i !== index));
+                          }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+                
+                {/* Display existing attachments for editing */}
+                {editingTask && formData.attachments && formData.attachments.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="caption" color="textSecondary">
+                      Existing attachments:
+                    </Typography>
+                    {formData.attachments.map((url, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          mt: 1,
+                          p: 1,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <AttachFileIcon fontSize="small" />
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 300 }}>
+                            {url.split('/').pop()}
+                          </Typography>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              attachments: prev.attachments?.filter((_, i) => i !== index)
+                            }));
+                          }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
             </Grid>
           </Grid>
         </DialogContent>
