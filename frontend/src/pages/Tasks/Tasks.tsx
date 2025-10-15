@@ -49,9 +49,14 @@ import {
   CheckCircle as CompleteIcon,
   Schedule as ScheduleIcon,
   Flag as FlagIcon,
+  AttachFile as AttachFileIcon,
+  Close as CloseIcon,
 } from '@mui/icons-material';
 import { useAuth, useNotification } from '../../context';
 import { TaskService } from '../../services/taskService';
+import { TaskAssignmentService, TaskAssignmentPrediction } from '../../services/taskAssignmentService';
+import { UserService } from '../../services/userService';
+import { FileService } from '../../services/fileService';
 
 // AWS SDK imports for production use
 // import { DynamoDBClient, ScanCommand, PutItemCommand, UpdateItemCommand, DeleteItemCommand } from '@aws-sdk/client-dynamodb';
@@ -81,6 +86,7 @@ interface TaskFormData {
   dueDate: string;
   Task_Complexity: number;
   Required_Skills: string[];
+  attachments?: string[];
 }
 
 // Mock tasks data (in production, fetch from DynamoDB)
@@ -146,11 +152,19 @@ const Tasks: React.FC = () => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+
+  // ML Assignment state
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [taskToAssign, setTaskToAssign] = useState<Task | null>(null);
+  const [recommendations, setRecommendations] = useState<TaskAssignmentPrediction[]>([]);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState<TaskFormData>({
@@ -241,6 +255,27 @@ const Tasks: React.FC = () => {
 
       setLoading(true);
 
+      // Upload files if any are selected
+      let uploadedFileUrls: string[] = formData.attachments || [];
+      if (selectedFiles.length > 0) {
+        setUploading(true);
+        try {
+          console.log(`Uploading ${selectedFiles.length} files...`);
+          const userId = user?.id || 'user-manager-12345';
+          const fileUrls = await FileService.uploadFiles(selectedFiles, userId);
+          uploadedFileUrls = [...uploadedFileUrls, ...fileUrls];
+          console.log('Files uploaded successfully:', fileUrls);
+        } catch (uploadError) {
+          console.error('File upload failed:', uploadError);
+          showError(`File upload failed: ${uploadError instanceof Error ? uploadError.message : 'Unknown error'}`);
+          setLoading(false);
+          setUploading(false);
+          return;
+        } finally {
+          setUploading(false);
+        }
+      }
+
       const taskRequestData = {
         title: formData.title,
         description: formData.description,
@@ -250,7 +285,7 @@ const Tasks: React.FC = () => {
         dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : new Date().toISOString(),
         Task_Complexity: formData.Task_Complexity,
         Required_Skills: formData.Required_Skills,
-        attachments: editingTask?.attachments || [],
+        attachments: uploadedFileUrls,
       };
 
       let updatedTask: Task;
@@ -403,6 +438,7 @@ const Tasks: React.FC = () => {
   const handleCloseDialog = () => {
     setOpenDialog(false);
     setEditingTask(null);
+    setSelectedFiles([]);
   };
 
   // Menu handlers
@@ -414,6 +450,86 @@ const Tasks: React.FC = () => {
   const handleMenuClose = () => {
     setMenuAnchor(null);
     setSelectedTask(null);
+  };
+
+  // ML-based Task Assignment Handlers
+  const handleOpenAssignDialog = async (task: Task) => {
+    setTaskToAssign(task);
+    setAssignDialogOpen(true);
+    setLoadingRecommendations(true);
+    handleMenuClose();
+
+    try {
+      console.log('🤖 Fetching ML-based recommendations for task:', task.title);
+      
+      // Fetch all users
+      const users = await UserService.getAllUsers();
+      console.log('👥 Loaded users:', users.length);
+
+      // Map users to UserSkillProfile format
+      const userProfiles = users.map(user => ({
+        id: user.user_ID,
+        userId: user.user_ID,
+        email: user.email,
+        name: user.name,
+        yearsOfExperience: user.Years_of_Experience,
+        skills: user.Employee_Skills,
+        department: user.department,
+        avatar: user.avatar,
+      }));
+
+      // Get predictions for all users
+      const predictions = await TaskAssignmentService.getTaskRecommendations(
+        task.Task_Complexity,
+        task.Required_Skills,
+        userProfiles
+      );
+      
+      console.log('📊 ML Predictions:', predictions);
+      setRecommendations(predictions);
+      showSuccess(`Found ${predictions.length} recommendations based on ML predictions`);
+    } catch (error) {
+      console.error('💥 Error getting recommendations:', error);
+      showError('Failed to get ML recommendations: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      setRecommendations([]);
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  };
+
+  const handleCloseAssignDialog = () => {
+    setAssignDialogOpen(false);
+    setTaskToAssign(null);
+    setRecommendations([]);
+  };
+
+  const handleAssignToUser = async (prediction: TaskAssignmentPrediction) => {
+    if (!taskToAssign) return;
+
+    setAssigning(true);
+    try {
+      console.log('📌 Assigning task to:', prediction.email);
+      
+      // Call assignment API
+      await TaskAssignmentService.assignTask(taskToAssign.taskId, prediction.email);
+      
+      // Update local state
+      setTasks(prevTasks =>
+        prevTasks.map(t =>
+          t.taskId === taskToAssign.taskId
+            ? { ...t, assignedTo: prediction.userId, updatedAt: new Date().toISOString() }
+            : t
+        )
+      );
+
+      showSuccess(`Task assigned to ${prediction.name} successfully!`);
+      handleCloseAssignDialog();
+    } catch (error) {
+      console.error('💥 Error assigning task:', error);
+      showError('Failed to assign task: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setAssigning(false);
+    }
   };
 
   // Complexity color mapping
@@ -737,6 +853,14 @@ const Tasks: React.FC = () => {
           <ListItemIcon><CloudUploadIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Upload Attachment</ListItemText>
         </MenuItem>
+        <MenuItem onClick={() => {
+          if (selectedTask) {
+            handleOpenAssignDialog(selectedTask);
+          }
+        }}>
+          <ListItemIcon><AssignmentIcon fontSize="small" color="primary" /></ListItemIcon>
+          <ListItemText>Assign Task (AI)</ListItemText>
+        </MenuItem>
         <Divider />
         <MenuItem 
           onClick={() => {
@@ -854,6 +978,114 @@ const Tasks: React.FC = () => {
                 helperText="Enter the skills required for this task, separated by commas"
               />
             </Grid>
+            
+            {/* File Upload Section */}
+            <Grid item xs={12}>
+              <Box sx={{ border: '1px dashed #ccc', borderRadius: 1, p: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="subtitle2" color="textSecondary">
+                    Attachments
+                  </Typography>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AttachFileIcon />}
+                    component="label"
+                  >
+                    Upload Files
+                    <input
+                      type="file"
+                      multiple
+                      hidden
+                      onChange={(e) => {
+                        const files = Array.from(e.target.files || []);
+                        setSelectedFiles((prev: File[]) => [...prev, ...files]);
+                      }}
+                    />
+                  </Button>
+                </Box>
+                
+                {/* Display selected files */}
+                {selectedFiles.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="caption" color="textSecondary">
+                      Selected files ({selectedFiles.length}):
+                    </Typography>
+                    {selectedFiles.map((file: File, index: number) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          mt: 1,
+                          p: 1,
+                          bgcolor: 'grey.100',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <AttachFileIcon fontSize="small" />
+                          <Typography variant="body2">{file.name}</Typography>
+                          <Typography variant="caption" color="textSecondary">
+                            ({(file.size / 1024).toFixed(2)} KB)
+                          </Typography>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setSelectedFiles((prev: File[]) => prev.filter((_: File, i: number) => i !== index));
+                          }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+                
+                {/* Display existing attachments for editing */}
+                {editingTask && formData.attachments && formData.attachments.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="caption" color="textSecondary">
+                      Existing attachments:
+                    </Typography>
+                    {formData.attachments.map((url, index) => (
+                      <Box
+                        key={index}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          mt: 1,
+                          p: 1,
+                          bgcolor: 'grey.50',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <AttachFileIcon fontSize="small" />
+                          <Typography variant="body2" noWrap sx={{ maxWidth: 300 }}>
+                            {url.split('/').pop()}
+                          </Typography>
+                        </Box>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setFormData(prev => ({
+                              ...prev,
+                              attachments: prev.attachments?.filter((_, i) => i !== index)
+                            }));
+                          }}
+                        >
+                          <CloseIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -916,6 +1148,189 @@ const Tasks: React.FC = () => {
           </Tooltip>
         </>
       )}
+
+      {/* ML-Based Task Assignment Dialog */}
+      <Dialog 
+        open={assignDialogOpen} 
+        onClose={handleCloseAssignDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <AssignmentIcon sx={{ mr: 1, color: 'primary.main' }} />
+            <Typography variant="h6">
+              AI-Powered Task Assignment
+            </Typography>
+          </Box>
+          {taskToAssign && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Task: {taskToAssign.title}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent>
+          {loadingRecommendations ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <CircularProgress size={48} />
+              <Typography variant="body1" sx={{ mt: 2 }}>
+                Analyzing skills and predicting completion times...
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Using machine learning to find the best match
+              </Typography>
+            </Box>
+          ) : recommendations.length === 0 ? (
+            <Alert severity="info">
+              No recommendations available. Please ensure users have skills and experience data.
+            </Alert>
+          ) : (
+            <Box>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  Recommendations are ranked by predicted completion time and skill match.
+                  The best candidates appear first.
+                </Typography>
+              </Alert>
+              
+              <Grid container spacing={2}>
+                {recommendations.map((rec, index) => (
+                  <Grid item xs={12} key={rec.userId}>
+                    <Card 
+                      variant="outlined"
+                      sx={{ 
+                        border: index === 0 ? '2px solid' : '1px solid',
+                        borderColor: index === 0 ? 'primary.main' : 'divider',
+                      }}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                            <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
+                              {rec.name.split(' ').map(n => n[0]).join('')}
+                            </Avatar>
+                            <Box>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Typography variant="h6">
+                                  {rec.name}
+                                </Typography>
+                                {index === 0 && (
+                                  <Chip 
+                                    label="Best Match" 
+                                    size="small" 
+                                    color="primary" 
+                                  />
+                                )}
+                                {index === 1 && (
+                                  <Chip 
+                                    label="Runner-up" 
+                                    size="small" 
+                                    color="secondary" 
+                                    variant="outlined"
+                                  />
+                                )}
+                              </Box>
+                              <Typography variant="body2" color="text.secondary">
+                                {rec.email}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          <Button
+                            variant={index === 0 ? "contained" : "outlined"}
+                            size="small"
+                            onClick={() => handleAssignToUser(rec)}
+                            disabled={assigning}
+                          >
+                            {assigning ? 'Assigning...' : 'Assign'}
+                          </Button>
+                        </Box>
+                        
+                        <Box sx={{ mt: 2 }}>
+                          <Grid container spacing={2}>
+                            <Grid item xs={6}>
+                              <Typography variant="caption" color="text.secondary">
+                                Predicted Completion
+                              </Typography>
+                              <Typography variant="body1" sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+                                <ScheduleIcon sx={{ fontSize: 16, mr: 0.5 }} />
+                                {rec.predictedCompletionTime.toFixed(1)} hours
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={6}>
+                              <Typography variant="caption" color="text.secondary">
+                                Skill Match
+                              </Typography>
+                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <LinearProgress 
+                                  variant="determinate" 
+                                  value={rec.skillMatchScore * 100}
+                                  sx={{ flexGrow: 1, mr: 1, height: 8, borderRadius: 1 }}
+                                  color={rec.skillMatchScore >= 0.8 ? 'success' : rec.skillMatchScore >= 0.5 ? 'warning' : 'error'}
+                                />
+                                <Typography variant="body2" sx={{ fontWeight: 'bold' }}>
+                                  {(rec.skillMatchScore * 100).toFixed(0)}%
+                                </Typography>
+                              </Box>
+                            </Grid>
+                            <Grid item xs={12}>
+                              <Typography variant="caption" color="text.secondary">
+                                Experience: {rec.yearsOfExperience} years
+                              </Typography>
+                            </Grid>
+                          </Grid>
+                        </Box>
+
+                        {rec.matchedSkills.length > 0 && (
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Matched Skills:
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {rec.matchedSkills.map((skill, idx) => (
+                                <Chip 
+                                  key={idx} 
+                                  label={skill} 
+                                  size="small" 
+                                  color="success"
+                                  variant="outlined"
+                                />
+                              ))}
+                            </Box>
+                          </Box>
+                        )}
+
+                        {rec.missingSkills.length > 0 && (
+                          <Box sx={{ mt: 1 }}>
+                            <Typography variant="caption" color="text.secondary">
+                              Missing Skills:
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                              {rec.missingSkills.map((skill, idx) => (
+                                <Chip 
+                                  key={idx} 
+                                  label={skill} 
+                                  size="small" 
+                                  color="error"
+                                  variant="outlined"
+                                />
+                              ))}
+                            </Box>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAssignDialog} disabled={assigning}>
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Loading Backdrop */}
       <Backdrop

@@ -400,7 +400,7 @@ const KanbanBoard: React.FC = () => {
         status: task.status,
         dueDate: task.dueDate.split('T')[0], // Extract date part
         Task_Complexity: task.Task_Complexity,
-        Required_Skills: task.Required_Skills,
+        Required_Skills: Array.isArray(task.Required_Skills) ? task.Required_Skills : [],
       });
     } else {
       setEditingTask(null);
@@ -617,7 +617,7 @@ const KanbanBoard: React.FC = () => {
 
                                   {/* Required Skills */}
                                   <Stack direction="row" spacing={0.5} sx={{ mb: 2, flexWrap: 'wrap', gap: 0.5 }}>  
-                                    {task.Required_Skills.slice(0, 2).map((skill) => (
+                                    {Array.isArray(task.Required_Skills) && task.Required_Skills.slice(0, 2).map((skill) => (
                                       <Chip
                                         key={skill}
                                         label={skill}
@@ -625,7 +625,7 @@ const KanbanBoard: React.FC = () => {
                                         sx={{ fontSize: '0.7rem', height: 20 }}
                                       />
                                     ))}
-                                    {task.Required_Skills.length > 2 && (
+                                    {Array.isArray(task.Required_Skills) && task.Required_Skills.length > 2 && (
                                       <Chip
                                         label={`+${task.Required_Skills.length - 2}`}
                                         size="small"
@@ -833,7 +833,7 @@ const KanbanBoard: React.FC = () => {
               <TextField
                 fullWidth
                 label="Required Skills (comma separated)"
-                value={formData.Required_Skills.join(', ')}
+                value={Array.isArray(formData.Required_Skills) ? formData.Required_Skills.join(', ') : ''}
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
                   Required_Skills: e.target.value.split(',').map(skill => skill.trim()).filter(Boolean)
