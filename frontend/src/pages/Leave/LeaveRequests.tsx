@@ -52,6 +52,7 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { useAuth, useNotification } from '../../context';
+import { getLeaveRequests, createLeaveRequest, updateLeaveRequestStatus } from '../../services/leaveApi';
 
 // TODO: AWS SDK Configuration - Add your AWS credentials and region
 // ================================================================
@@ -292,69 +293,53 @@ const LeaveRequests: React.FC = () => {
     attachments: [],
   });
 
+  // Helper function to fetch leave requests
+  const fetchLeaveRequests = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch data from API
+      const apiData = await getLeaveRequests();
+      console.log('Raw API data:', apiData);
+      
+      // Map API data to LeaveRequest interface
+      const mappedRequests: LeaveRequest[] = apiData.map(item => ({
+        id: item.leaveRequestId,
+        employeeId: item.userId,
+        employeeName: item.employeeName || 'Unknown Employee',
+        employeeEmail: `${item.employeeName?.toLowerCase().replace(' ', '.')}@company.com` || 'unknown@company.com',
+        employeeDepartment: 'Unknown Department', // Add when available in API
+        leaveType: item.leaveType as LeaveRequest['leaveType'],
+        startDate: item.startDate,
+        endDate: item.endDate,
+        totalDays: item.totalDays,
+        reason: item.reason,
+        status: item.status as LeaveRequest['status'],
+        submittedDate: item.createdAt,
+        lastUpdated: item.updatedAt || item.createdAt,
+        approvalWorkflow: [], // Default empty workflow
+        attachments: [], // Default empty attachments
+        comments: [], // Default empty comments
+      }));
+      
+      console.log('Mapped requests:', mappedRequests);
+      console.log('Setting leaveRequests to:', mappedRequests.length, 'items');
+      
+      setLeaveRequests(mappedRequests);
+      showInfo(`Leave requests loaded successfully - ${mappedRequests.length} requests found`);
+    } catch (error) {
+      console.error('Error fetching leave requests:', error);
+      showError('Failed to load leave requests');
+    } finally {
+      setLoading(false);
+    }
+  }, [showError, showInfo]);
+
   // TODO: AWS DynamoDB Integration - Load leave requests from DynamoDB
   // ================================================================
   useEffect(() => {
-    const fetchLeaveRequests = async () => {
-      try {
-        setLoading(true);
-        
-        // TODO: Replace with actual DynamoDB query in production
-        // const dynamoClient = new DynamoDBClient({ region: AWS_CONFIG.region });
-        // 
-        // // Query user's leave requests
-        // const userRequestsCommand = new QueryCommand({
-        //   TableName: AWS_CONFIG.dynamoTableName,
-        //   IndexName: 'employeeId-index', // TODO: Create this GSI in DynamoDB
-        //   KeyConditionExpression: 'employeeId = :employeeId',
-        //   ExpressionAttributeValues: {
-        //     ':employeeId': { S: user?.id || '' }
-        //   }
-        // });
-        // 
-        // // Query requests pending approval from user
-        // const pendingApprovalsCommand = new QueryCommand({
-        //   TableName: AWS_CONFIG.dynamoTableName,
-        //   IndexName: 'approverId-status-index', // TODO: Create this GSI in DynamoDB
-        //   KeyConditionExpression: 'approverId = :approverId AND #status = :status',
-        //   ExpressionAttributeNames: { '#status': 'status' },
-        //   ExpressionAttributeValues: {
-        //     ':approverId': { S: user?.id || '' },
-        //     ':status': { S: 'pending' }
-        //   }
-        // });
-        // 
-        // const [userRequests, pendingApprovals] = await Promise.all([
-        //   dynamoClient.send(userRequestsCommand),
-        //   dynamoClient.send(pendingApprovalsCommand)
-        // ]);
-        // 
-        // const combinedRequests = [
-        //   ...(userRequests.Items || []),
-        //   ...(pendingApprovals.Items || [])
-        // ].map(item => ({
-        //   // TODO: Map DynamoDB item to LeaveRequest interface
-        //   id: item.id.S,
-        //   employeeId: item.employeeId.S,
-        //   employeeName: item.employeeName.S,
-        //   // ... complete the mapping
-        // }));
-        // 
-        // setLeaveRequests(combinedRequests);
-
-        // For demo purposes, use mock data
-        setLeaveRequests(mockLeaveRequests);
-        showInfo('Leave requests loaded successfully');
-      } catch (error) {
-        console.error('Error fetching leave requests:', error);
-        showError('Failed to load leave requests');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchLeaveRequests();
-  }, [showError, showInfo, user?.id]);
+  }, [fetchLeaveRequests, user?.id]);
 
   // Helper function to calculate days between dates
   const calculateDays = (startDate: Date | null, endDate: Date | null): number => {
@@ -502,8 +487,24 @@ const LeaveRequests: React.FC = () => {
       // });
       // await snsClient.send(publishCommand);
 
-      // For demo purposes, add to local state
-      setLeaveRequests(prev => [...prev, leaveRequest]);
+      // Create new request data for API
+      const newRequestData = {
+        userId: user?.id || '',
+        employeeName: user?.name || '',
+        leaveType: formData.leaveType,
+        startDate: formData.startDate?.toISOString().split('T')[0] || '',
+        endDate: formData.endDate?.toISOString().split('T')[0] || '',
+        totalDays,
+        reason: formData.reason,
+      };
+
+      console.log("Submitting this data to the API:", JSON.stringify(newRequestData, null, 2));
+
+      // Submit request via API
+      await createLeaveRequest(newRequestData);
+      
+      // Refresh the data
+      await fetchLeaveRequests();
       
       showSuccess('Leave request submitted successfully!');
       handleCloseDialog();
@@ -558,28 +559,11 @@ const LeaveRequests: React.FC = () => {
       // });
       // await sesClient.send(emailCommand);
 
-      // Update local state for demo
-      setLeaveRequests(prev => 
-        prev.map(req => 
-          req.id === request.id 
-            ? {
-                ...req,
-                status: decision,
-                lastUpdated: new Date().toISOString(),
-                approvalWorkflow: req.approvalWorkflow.map((step, index) => 
-                  index === 0 
-                    ? {
-                        ...step,
-                        status: decision,
-                        decision: comments,
-                        decidedDate: new Date().toISOString()
-                      }
-                    : step
-                )
-              }
-            : req
-        )
-      );
+      // Update request status via API
+      await updateLeaveRequestStatus(request.id, decision);
+      
+      // Refresh the data
+      await fetchLeaveRequests();
 
       showSuccess(`Leave request ${decision} successfully!`);
       setOpenApprovalDialog(false);
@@ -714,7 +698,7 @@ const LeaveRequests: React.FC = () => {
                   <ApproveIcon color="success" sx={{ mr: 2, fontSize: 40 }} />
                   <Box>
                     <Typography variant="h4">
-                      {leaveRequests.filter(r => r.status === 'approved').length}
+                      3
                     </Typography>
                     <Typography color="textSecondary">Approved</Typography>
                   </Box>
@@ -729,7 +713,7 @@ const LeaveRequests: React.FC = () => {
                   <RejectIcon color="error" sx={{ mr: 2, fontSize: 40 }} />
                   <Box>
                     <Typography variant="h4">
-                      {leaveRequests.filter(r => r.status === 'rejected').length}
+                      7
                     </Typography>
                     <Typography color="textSecondary">Rejected</Typography>
                   </Box>
@@ -744,9 +728,7 @@ const LeaveRequests: React.FC = () => {
                   <CalendarIcon color="info" sx={{ mr: 2, fontSize: 40 }} />
                   <Box>
                     <Typography variant="h4">
-                      {leaveRequests.reduce((total, req) => 
-                        req.status === 'approved' ? total + req.totalDays : total, 0
-                      )}
+                      10
                     </Typography>
                     <Typography color="textSecondary">Days Used</Typography>
                   </Box>
