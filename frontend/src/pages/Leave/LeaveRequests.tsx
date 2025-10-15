@@ -160,97 +160,7 @@ interface LeaveFormData {
   attachments: File[];
 }
 
-// Mock data - Replace with AWS DynamoDB queries in production
-const mockLeaveRequests: LeaveRequest[] = [
-  {
-    id: '1',
-    employeeId: 'emp001',
-    employeeName: 'John Doe',
-    employeeEmail: 'john.doe@company.com',
-    employeeDepartment: 'Engineering',
-    leaveType: 'vacation',
-    startDate: '2025-10-20',
-    endDate: '2025-10-25',
-    totalDays: 6,
-    reason: 'Family vacation to Europe',
-    status: 'pending',
-    submittedDate: '2025-10-11',
-    lastUpdated: '2025-10-11',
-    approvalWorkflow: [
-      {
-        id: 'approval1',
-        approverId: 'mgr001',
-        approverName: 'Sarah Manager',
-        approverRole: 'Direct Manager',
-        status: 'pending',
-        decision: '',
-        order: 1,
-      },
-      {
-        id: 'approval2',
-        approverId: 'hr001',
-        approverName: 'HR Director',
-        approverRole: 'HR Director',
-        status: 'pending',
-        decision: '',
-        order: 2,
-      },
-    ],
-    attachments: [],
-    comments: [],
-    coveringEmployee: 'emp002',
-    coveringEmployeeName: 'Jane Smith',
-  },
-  {
-    id: '2',
-    employeeId: 'emp002',
-    employeeName: 'Jane Smith',
-    employeeEmail: 'jane.smith@company.com',
-    employeeDepartment: 'Design',
-    leaveType: 'sick',
-    startDate: '2025-10-15',
-    endDate: '2025-10-16',
-    totalDays: 2,
-    reason: 'Medical appointment and recovery',
-    status: 'approved',
-    submittedDate: '2025-10-10',
-    lastUpdated: '2025-10-12',
-    approvalWorkflow: [
-      {
-        id: 'approval3',
-        approverId: 'mgr002',
-        approverName: 'Mike Manager',
-        approverRole: 'Direct Manager',
-        status: 'approved',
-        decision: 'Approved - Medical documentation provided',
-        decidedDate: '2025-10-12',
-        order: 1,
-      },
-    ],
-    attachments: [
-      {
-        id: 'att1',
-        fileName: 'medical-certificate.pdf',
-        fileSize: 245760,
-        fileType: 'application/pdf',
-        s3Key: 'leave-requests/2/medical-certificate.pdf',
-        uploadedDate: '2025-10-10',
-        uploadedBy: 'Jane Smith',
-      },
-    ],
-    comments: [
-      {
-        id: 'comm1',
-        authorId: 'mgr002',
-        authorName: 'Mike Manager',
-        content: 'Hope you feel better soon. Take care!',
-        timestamp: '2025-10-12',
-        isInternal: false,
-      },
-    ],
-  },
-];
-
+// Mock employees data for covering employee selection
 const mockEmployees = [
   { id: 'emp001', name: 'John Doe', department: 'Engineering', email: 'john.doe@company.com' },
   { id: 'emp002', name: 'Jane Smith', department: 'Design', email: 'jane.smith@company.com' },
@@ -309,12 +219,12 @@ const LeaveRequests: React.FC = () => {
         employeeName: item.employeeName || 'Unknown Employee',
         employeeEmail: `${item.employeeName?.toLowerCase().replace(' ', '.')}@company.com` || 'unknown@company.com',
         employeeDepartment: 'Unknown Department', // Add when available in API
-        leaveType: item.leaveType as LeaveRequest['leaveType'],
+        leaveType: (item.leaveType || 'vacation') as LeaveRequest['leaveType'],
         startDate: item.startDate,
         endDate: item.endDate,
         totalDays: item.totalDays,
         reason: item.reason,
-        status: item.status as LeaveRequest['status'],
+        status: (item.status || 'pending') as LeaveRequest['status'],
         submittedDate: item.createdAt,
         lastUpdated: item.updatedAt || item.createdAt,
         approvalWorkflow: [], // Default empty workflow
@@ -394,28 +304,6 @@ const LeaveRequests: React.FC = () => {
       });
 
       const attachments = await Promise.all(attachmentPromises);
-
-      const leaveRequest: LeaveRequest = {
-        id: requestId,
-        employeeId: user?.id || '',
-        employeeName: user?.name || '',
-        employeeEmail: user?.email || '',
-        employeeDepartment: user?.department || '',
-        leaveType: formData.leaveType,
-        startDate: formData.startDate?.toISOString().split('T')[0] || '',
-        endDate: formData.endDate?.toISOString().split('T')[0] || '',
-        totalDays,
-        reason: formData.reason,
-        status: 'pending',
-        submittedDate: new Date().toISOString(),
-        lastUpdated: new Date().toISOString(),
-        approvalWorkflow: [], // TODO: This will be populated by Lambda function
-        attachments,
-        comments: [],
-        emergencyContact: formData.emergencyContact,
-        coveringEmployee: formData.coveringEmployee,
-        coveringEmployeeName: mockEmployees.find(emp => emp.id === formData.coveringEmployee)?.name,
-      };
 
       // TODO: Save to DynamoDB and trigger approval workflow via Lambda
       // const dynamoClient = new DynamoDBClient({ region: AWS_CONFIG.region });
@@ -594,7 +482,8 @@ const LeaveRequests: React.FC = () => {
   });
 
   // Get status color
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string | undefined) => {
+    if (!status) return 'default';
     switch (status) {
       case 'approved': return 'success';
       case 'rejected': return 'error';
@@ -605,7 +494,8 @@ const LeaveRequests: React.FC = () => {
   };
 
   // Get leave type color
-  const getLeaveTypeColor = (type: string) => {
+  const getLeaveTypeColor = (type: string | undefined) => {
+    if (!type) return 'default';
     switch (type) {
       case 'vacation': return 'primary';
       case 'sick': return 'error';
@@ -817,7 +707,7 @@ const LeaveRequests: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={request.leaveType.toUpperCase()}
+                      label={request.leaveType?.toUpperCase() || 'UNKNOWN'}
                       color={getLeaveTypeColor(request.leaveType) as any}
                       size="small"
                     />
@@ -834,7 +724,7 @@ const LeaveRequests: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={request.status.toUpperCase()}
+                      label={request.status?.toUpperCase() || 'UNKNOWN'}
                       color={getStatusColor(request.status) as any}
                       size="small"
                     />
@@ -1103,11 +993,11 @@ const LeaveRequests: React.FC = () => {
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Typography variant="subtitle2" color="textSecondary">Leave Type</Typography>
-                    <Chip label={selectedRequest.leaveType.toUpperCase()} color={getLeaveTypeColor(selectedRequest.leaveType) as any} />
+                    <Chip label={selectedRequest.leaveType?.toUpperCase() || 'UNKNOWN'} color={getLeaveTypeColor(selectedRequest.leaveType) as any} />
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Typography variant="subtitle2" color="textSecondary">Status</Typography>
-                    <Chip label={selectedRequest.status.toUpperCase()} color={getStatusColor(selectedRequest.status) as any} />
+                    <Chip label={selectedRequest.status?.toUpperCase() || 'UNKNOWN'} color={getStatusColor(selectedRequest.status) as any} />
                   </Grid>
                   <Grid item xs={12} md={6}>
                     <Typography variant="subtitle2" color="textSecondary">Start Date</Typography>

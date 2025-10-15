@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard/Dashboard';
 import Tasks from './pages/Tasks/Tasks';
 import KanbanBoard from './pages/Tasks/KanbanBoard';
 import LeaveRequests from './pages/Leave/LeaveRequests';
+import Users from './pages/Users/Users';
 import Profile from './pages/Profile/Profile';
 import LoadingSpinner from './components/Common/LoadingSpinner';
 
@@ -38,6 +39,7 @@ const App: React.FC = () => {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/kanban" element={<KanbanBoard />} />
         <Route path="/leave" element={<LeaveRequests />} />
+        <Route path="/users" element={<Users />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/login" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

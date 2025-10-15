@@ -1,4 +1,4 @@
-import { Task } from '../pages/Tasks/Tasks';
+import { Task } from '../types/task';
 
 // For development: you can use a CORS proxy temporarily
 const USE_CORS_PROXY = true; // Set to false once CORS is configured in API Gateway

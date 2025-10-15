@@ -23,6 +23,7 @@ import {
   Assignment as TaskIcon,
   ViewKanban as KanbanIcon,
   Event as LeaveIcon,
+  People as UsersIcon,
   AccountCircle as ProfileIcon,
   Logout as LogoutIcon,
   Notifications as NotificationsIcon,
@@ -65,6 +66,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Tasks', icon: <TaskIcon />, path: '/tasks' },
     { text: 'Kanban Board', icon: <KanbanIcon />, path: '/kanban' },
     { text: 'Leave Requests', icon: <LeaveIcon />, path: '/leave' },
+    { text: 'Users', icon: <UsersIcon />, path: '/users' },
   ];
 
   const drawer = (
