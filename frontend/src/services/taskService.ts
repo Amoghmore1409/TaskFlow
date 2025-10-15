@@ -17,6 +17,11 @@ interface CreateTaskRequest {
   attachments?: string[];
 }
 
+interface TasksResponse {
+  tasks: Task[];
+  count: number;
+}
+
 interface UpdateTaskRequest extends Partial<CreateTaskRequest> {
   taskId: string;
 }
@@ -174,7 +179,8 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
         const response = await fetch(`${API_BASE_URL_TASK}`);
         if (response.ok) {
           const data = await response.json();
-          return Array.isArray(data) ? data : [];
+          const tasks = data.tasks || (Array.isArray(data) ? data : []);
+          return Array.isArray(tasks) ? tasks : [];
         }
         throw new Error('Direct API call failed');
       } catch (corsError) {
@@ -186,7 +192,8 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
           if (response.ok) {
             const proxyData = await response.json();
             const actualData = JSON.parse(proxyData.contents);
-            return Array.isArray(actualData) ? actualData : [];
+            const tasks = actualData.tasks || (Array.isArray(actualData) ? actualData : []);
+            return Array.isArray(tasks) ? tasks : [];
           }
           throw new Error('Proxy call failed');
         } catch (proxyError) {
@@ -196,11 +203,11 @@ See FIX_API_GATEWAY_CORS.md for detailed instructions.`);
       }
     }
 
-    const response = await this.makeRequest<Task[]>('', {
+    const response = await this.makeRequest<TasksResponse>('', {
       method: 'GET',
     });
 
-    return Array.isArray(response) ? response : [];
+    return Array.isArray(response.tasks) ? response.tasks : [];
   }
 
   // Get a specific task by ID

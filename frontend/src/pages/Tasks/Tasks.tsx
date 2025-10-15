@@ -601,7 +601,7 @@ const Tasks: React.FC = () => {
                       {task.description}
                     </Typography>
                     <Box sx={{ mt: 1 }}>
-                      {(task.Required_Skills || []).map((skill) => (
+                      {(Array.isArray(task.Required_Skills) ? task.Required_Skills : []).map((skill) => (
                         <Chip
                           key={skill}
                           label={skill}
